@@ -242,10 +242,10 @@ std::string OSUtils::platformDefaultHomePath()
 
 #ifdef __BSD__
 	// BSD likes /var/db instead of /var/lib
-	return std::string("/var/db/zerotier-one");
+	return std::string("/var/db/backone");
 #else
 	// Use /var/lib for Linux and other *nix
-	return std::string("/var/lib/zerotier-one");
+	return std::string("/var/lib/backone");
 #endif
 
 #endif

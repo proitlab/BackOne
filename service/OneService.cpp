@@ -655,7 +655,7 @@ public:
 
 		char portstr[64];
 		Utils::snprintf(portstr,sizeof(portstr),"%u",_ports[0]);
-		OSUtils::writeFile((_homePath + ZT_PATH_SEPARATOR_S + "zerotier-one.port").c_str(),std::string(portstr));
+		OSUtils::writeFile((_homePath + ZT_PATH_SEPARATOR_S + "backone.port").c_str(),std::string(portstr));
 	}
 
 	virtual ~OneServiceImpl()
