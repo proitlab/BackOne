@@ -102,37 +102,31 @@ int main(int argc,char **argv)
 	const uint64_t id = ZT_WORLD_ID_EARTH;
 	const uint64_t ts = 1452708876314ULL; // January 13th, 2016
 
-	// Alice
+	// Tifa 1
 	roots.push_back(World::Root());
-	roots.back().identity = Identity("9d219039f3:0:01f0922a98e3b34ebcbff333269dc265d7a020aab69d72be4d4acc9c8c9294785771256cd1d942a90d1bd1d2dca3ea84ef7d85afe6611fb43ff0b74126d90a6e");
-	roots.back().stableEndpoints.push_back(InetAddress("188.166.94.177/9993")); // Amsterdam
-	roots.back().stableEndpoints.push_back(InetAddress("2a03:b0c0:2:d0::7d:1/9993")); // Amsterdam
-	roots.back().stableEndpoints.push_back(InetAddress("154.66.197.33/9993")); // Johannesburg
-	roots.back().stableEndpoints.push_back(InetAddress("2c0f:f850:154:197::33/9993")); // Johannesburg
-	roots.back().stableEndpoints.push_back(InetAddress("159.203.97.171/9993")); // New York
-	roots.back().stableEndpoints.push_back(InetAddress("2604:a880:800:a1::54:6001/9993")); // New York
-	roots.back().stableEndpoints.push_back(InetAddress("169.57.143.104/9993")); // Sao Paolo
-	roots.back().stableEndpoints.push_back(InetAddress("2607:f0d0:1d01:57::2/9993")); // Sao Paolo
-	roots.back().stableEndpoints.push_back(InetAddress("107.170.197.14/9993")); // San Francisco
-	roots.back().stableEndpoints.push_back(InetAddress("2604:a880:1:20::200:e001/9993")); // San Francisco
-	roots.back().stableEndpoints.push_back(InetAddress("128.199.197.217/9993")); // Singapore
-	roots.back().stableEndpoints.push_back(InetAddress("2400:6180:0:d0::b7:4001/9993")); // Singapore
+    	roots.back().identity = Identity("35b7a18f36:0:e7d0dc4f655c0a2adb72aa9529e97d0fdf1e72bf12a6e753c6b366d88b388b645702edbd8dfeda21c3654f2d73c28fecc7c4713b335ffa61b09e322a7b93c18a");
+    	roots.back().stableEndpoints.push_back(InetAddress("103.16.198.213/9993"));
 
-	// Bob
+	// Cyber 2
 	roots.push_back(World::Root());
-	roots.back().identity = Identity("8841408a2e:0:bb1d31f2c323e264e9e64172c1a74f77899555ed10751cd56e86405cde118d02dffe555d462ccf6a85b5631c12350c8d5dc409ba10b9025d0f445cf449d92b1c");
-	roots.back().stableEndpoints.push_back(InetAddress("45.32.198.130/9993")); // Dallas
-	roots.back().stableEndpoints.push_back(InetAddress("2001:19f0:6400:81c3:5400:00ff:fe18:1d61/9993")); // Dallas
-	roots.back().stableEndpoints.push_back(InetAddress("46.101.160.249/9993")); // Frankfurt
-	roots.back().stableEndpoints.push_back(InetAddress("2a03:b0c0:3:d0::6a:3001/9993")); // Frankfurt
-	roots.back().stableEndpoints.push_back(InetAddress("107.191.46.210/9993")); // Paris
-	roots.back().stableEndpoints.push_back(InetAddress("2001:19f0:6800:83a4::64/9993")); // Paris
-	roots.back().stableEndpoints.push_back(InetAddress("45.32.246.179/9993")); // Sydney
-	roots.back().stableEndpoints.push_back(InetAddress("2001:19f0:5800:8bf8:5400:ff:fe15:b39a/9993")); // Sydney
-	roots.back().stableEndpoints.push_back(InetAddress("45.32.248.87/9993")); // Tokyo
-	roots.back().stableEndpoints.push_back(InetAddress("2001:19f0:7000:9bc9:5400:00ff:fe15:c4f5/9993")); // Tokyo
-	roots.back().stableEndpoints.push_back(InetAddress("159.203.2.154/9993")); // Toronto
-	roots.back().stableEndpoints.push_back(InetAddress("2604:a880:cad:d0::26:7001/9993")); // Toronto
+    	roots.back().identity = Identity("e4bfc89a12:0:93f764c53030b11c4b9f824cdade6fb731d26b5150f326ca484dbb3acb33a065d5431524fe7ce517512b13c21c4ab5edb04a2e145cefa33ffdf39a855b966c21");
+    	roots.back().stableEndpoints.push_back(InetAddress("103.80.237.163/9993"));
+
+    	// Controller Tifa 1 and Cyber 1 as backup
+    	roots.push_back(World::Root());
+    	roots.back().identity = Identity("9ccd7502d0:0:86de0c08914250d85d1e7c2771dec3ac8f01c9767fd57813854d117e065ac84dfcea576c62e6ed17e3e0d1d81a942936ca2a6c31e534d64e2a4d0a8837a9c6d2");
+    	roots.back().stableEndpoints.push_back(InetAddress("103.80.237.27/9993"));
+    	roots.back().stableEndpoints.push_back(InetAddress("103.16.198.211/9993"));
+    	//roots.back().stableEndpoints.push_back(InetAddress("2a02:6ea0:c815::/9993"));
+
+    	// Ancol
+    	roots.push_back(World::Root());
+    	roots.back().identity = Identity("117cd947d5:0:8b15bfe3798aa1529abf6def4d4d8eb3ff5cbd50c04ddaf7747adc00a55aef5b6666953ee30a2b6c3c852db7426c42760b7d26c63acdc6489fd11bb36690d966");
+    	//roots.back().stableEndpoints.push_back(InetAddress("36.92.72.210/9993"));
+    	roots.back().stableEndpoints.push_back(InetAddress("124.158.170.34/9993"));
+    	//roots.back().stableEndpoints.push_back(InetAddress("192.168.78.2/9993"));
+    	roots.back().stableEndpoints.push_back(InetAddress("123.231.254.50/9993"));
+    	//roots.back().stableEndpoints.push_back(InetAddress("2a02:6ea0:c815::/9993"));
 
 	// END WORLD DEFINITION
 	// =========================================================================
