@@ -205,6 +205,6 @@ debian:	distclean
 	debuild -I -i -us -uc
 
 redhat:	distclean
-	rpmbuild -ba zerotier-one.spec
+	rpmbuild -ba backone.spec
 
 FORCE:
