@@ -1,20 +1,15 @@
 /*
- * ZeroTier One - Network Virtualization Everywhere
- * Copyright (C) 2011-2016  ZeroTier, Inc.  https://www.zerotier.com/
+ * Copyright (c)2013-2020 ZeroTier, Inc.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file in the project's root directory.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * Change Date: 2025-01-01
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * On the date above, in accordance with the Business Source License, use
+ * of this software will be governed by version 2.0 of the Apache License.
  */
+/****/
 
 #ifndef ZT_PHY_HPP
 #define ZT_PHY_HPP
@@ -144,12 +139,13 @@ private:
 		ZT_PHY_SOCKET_UNIX_LISTEN = 0x08
 	};
 
-	struct PhySocketImpl
-	{
+	struct PhySocketImpl {
+		PhySocketImpl() { memset(ifname, 0, sizeof(ifname)); }
 		PhySocketType type;
 		ZT_PHY_SOCKFD_TYPE sock;
 		void *uptr; // user-settable pointer
 		ZT_PHY_SOCKADDR_STORAGE_TYPE saddr; // remote for TCP_OUT and TCP_IN, local for TCP_LISTEN, RAW, and UDP
+		char ifname[16];
 	};
 
 	std::list<PhySocketImpl> _socks;
@@ -242,6 +238,30 @@ public:
 	static inline void** getuptr(PhySocket *s) throw() { return &(reinterpret_cast<PhySocketImpl *>(s)->uptr); }
 
 	/**
+	 * @param s Socket object
+	 * @param nameBuf Buffer to store name of interface which this Socket object is bound to
+	 * @param buflen Length of buffer to copy name into
+	 */
+	static inline void getIfName(PhySocket *s, char *nameBuf, int buflen)
+	{
+		if (s) {
+			memcpy(nameBuf, reinterpret_cast<PhySocketImpl *>(s)->ifname, buflen);
+		}
+	}
+
+	/**
+	 * @param s Socket object
+	 * @param ifname Buffer containing name of interface that this Socket object is bound to
+	 * @param len Length of name of interface
+	 */
+	static inline void setIfName(PhySocket *s, char *ifname, int len)
+	{
+		if (s) {
+			memcpy(&(reinterpret_cast<PhySocketImpl *>(s)->ifname), ifname, len);
+		}
+	}
+
+	/**
 	 * Cause poll() to stop waiting immediately
 	 *
 	 * This can be used to reset the polling loop after changes that require
@@ -331,14 +351,14 @@ public:
 				int tmpbs = bs;
 				if (setsockopt(s,SOL_SOCKET,SO_RCVBUF,(const char *)&tmpbs,sizeof(tmpbs)) == 0)
 					break;
-				bs -= 16384;
+				bs -= 4096;
 			}
 			bs = bufferSize;
 			while (bs >= 65536) {
 				int tmpbs = bs;
 				if (setsockopt(s,SOL_SOCKET,SO_SNDBUF,(const char *)&tmpbs,sizeof(tmpbs)) == 0)
 					break;
-				bs -= 16384;
+				bs -= 4096;
 			}
 		}
 
@@ -680,25 +700,26 @@ public:
 	 * until one works.
 	 *
 	 * @param sock Socket
-	 * @param bufferSize Desired buffer sizes
+	 * @param receiveBufferSize Desired size of receive buffer
+	 * @param sendBufferSize Desired size of send buffer
 	 */
-	inline void setBufferSizes(const PhySocket *sock,int bufferSize)
+	inline void setBufferSizes(const PhySocket *sock,int receiveBufferSize,int sendBufferSize)
 	{
 		PhySocketImpl &sws = *(reinterpret_cast<PhySocketImpl *>(sock));
-		if (bufferSize > 0) {
-			int bs = bufferSize;
-			while (bs >= 65536) {
-				int tmpbs = bs;
+		if (receiveBufferSize > 0) {
+			while (receiveBufferSize > 0) {
+				int tmpbs = receiveBufferSize;
 				if (::setsockopt(sws.sock,SOL_SOCKET,SO_RCVBUF,(const char *)&tmpbs,sizeof(tmpbs)) == 0)
 					break;
-				bs -= 16384;
+				receiveBufferSize -= 16384;
 			}
-			bs = bufferSize;
-			while (bs >= 65536) {
-				int tmpbs = bs;
+		}
+		if (sendBufferSize > 0) {
+			while (sendBufferSize > 0) {
+				int tmpbs = sendBufferSize;
 				if (::setsockopt(sws.sock,SOL_SOCKET,SO_SNDBUF,(const char *)&tmpbs,sizeof(tmpbs)) == 0)
 					break;
-				bs -= 16384;
+				sendBufferSize -= 16384;
 			}
 		}
 	}
@@ -807,7 +828,7 @@ public:
 	 * @param sock Stream connection socket
 	 * @param notifyWritable Want writable notifications?
 	 */
-	inline const void setNotifyWritable(PhySocket *sock,bool notifyWritable)
+	inline void setNotifyWritable(PhySocket *sock,bool notifyWritable)
 	{
 		PhySocketImpl &sws = *(reinterpret_cast<PhySocketImpl *>(sock));
 		if (notifyWritable) {
@@ -827,7 +848,7 @@ public:
 	 * @param sock Socket to modify
 	 * @param notifyReadable True if socket should be monitored for readability
 	 */
-	inline const void setNotifyReadable(PhySocket *sock,bool notifyReadable)
+	inline void setNotifyReadable(PhySocket *sock,bool notifyReadable)
 	{
 		PhySocketImpl &sws = *(reinterpret_cast<PhySocketImpl *>(sock));
 		if (notifyReadable) {
@@ -957,7 +978,7 @@ public:
 
 				case ZT_PHY_SOCKET_UDP:
 					if (FD_ISSET(s->sock,&rfds)) {
-						for(;;) {
+						for(int k=0;k<1024;++k) {
 							memset(&ss,0,sizeof(ss));
 							socklen_t slen = sizeof(ss);
 							long n = (long)::recvfrom(s->sock,buf,sizeof(buf),0,(struct sockaddr *)&ss,&slen);
@@ -976,7 +997,7 @@ public:
 					ZT_PHY_SOCKFD_TYPE sock = s->sock; // if closed, s->sock becomes invalid as s is no longer dereferencable
 					if ((FD_ISSET(sock,&wfds))&&(FD_ISSET(sock,&_writefds))) {
 						try {
-							_handler->phyOnUnixWritable((PhySocket *)&(*s),&(s->uptr),false);
+							_handler->phyOnUnixWritable((PhySocket *)&(*s),&(s->uptr));
 						} catch ( ... ) {}
 					}
 					if (FD_ISSET(sock,&rfds)) {

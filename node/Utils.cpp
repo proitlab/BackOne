@@ -1,20 +1,15 @@
 /*
- * ZeroTier One - Network Virtualization Everywhere
- * Copyright (C) 2011-2016  ZeroTier, Inc.  https://www.zerotier.com/
+ * Copyright (c)2019 ZeroTier, Inc.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file in the project's root directory.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * Change Date: 2025-01-01
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * On the date above, in accordance with the Business Source License, use
+ * of this software will be governed by version 2.0 of the Apache License.
  */
+/****/
 
 #include <stdio.h>
 #include <string.h>
@@ -33,110 +28,188 @@
 #include <sys/stat.h>
 #include <sys/uio.h>
 #include <dirent.h>
+#ifdef __LINUX__
+#include <sys/auxv.h>
+#endif
 #endif
 
 #ifdef __WINDOWS__
 #include <wincrypt.h>
+#include <intrin.h>
 #endif
 
 #include "Utils.hpp"
 #include "Mutex.hpp"
 #include "Salsa20.hpp"
 
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+
+#if defined(__ANDROID__) && defined(__aarch64__)
+#include <asm/hwcap.h>
+#endif
+
+#ifdef ZT_ARCH_ARM_HAS_NEON
+
+#ifdef __LINUX__
+#include <sys/auxv.h>
+#include <asm/hwcap.h>
+#endif
+
+#if defined(__FreeBSD__)
+#include <elf.h>
+#include <sys/auxv.h>
+static inline long getauxval(int caps)
+{
+	long hwcaps = 0;
+	elf_aux_info(caps, &hwcaps, sizeof(hwcaps));
+	return hwcaps;
+}
+#endif
+
+// If these are not even defined, obviously they are not supported.
+#ifndef HWCAP_AES
+#define HWCAP_AES 0
+#endif
+#ifndef HWCAP_CRC32
+#define HWCAP_CRC32 0
+#endif
+#ifndef HWCAP_PMULL
+#define HWCAP_PMULL 0
+#endif
+#ifndef HWCAP_SHA1
+#define HWCAP_SHA1 0
+#endif
+#ifndef HWCAP_SHA2
+#define HWCAP_SHA2 0
+#endif
+
+#endif // ZT_ARCH_ARM_HAS_NEON
+
 namespace ZeroTier {
+
+const uint64_t Utils::ZERO256[4] = {0ULL,0ULL,0ULL,0ULL};
 
 const char Utils::HEXCHARS[16] = { '0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f' };
 
-static void _Utils_doBurn(char *ptr,unsigned int len)
+#ifdef ZT_ARCH_ARM_HAS_NEON
+Utils::ARMCapabilities::ARMCapabilities() noexcept
 {
-	for(unsigned int i=0;i<len;++i)
-		ptr[i] = (char)0;
-}
-void (*volatile _Utils_doBurn_ptr)(char *,unsigned int) = _Utils_doBurn;
-void Utils::burn(void *ptr,unsigned int len)
-	throw()
-{
-	// Ridiculous hack: call _doBurn() via a volatile function pointer to
-	// hold down compiler optimizers and beat them mercilessly until they
-	// cry and mumble something about never eliding secure memory zeroing
-	// again.
-	(_Utils_doBurn_ptr)((char *)ptr,len);
-}
+#ifdef __APPLE__
 
-std::string Utils::hex(const void *data,unsigned int len)
-{
-	std::string r;
-	r.reserve(len * 2);
-	for(unsigned int i=0;i<len;++i) {
-		r.push_back(HEXCHARS[(((const unsigned char *)data)[i] & 0xf0) >> 4]);
-		r.push_back(HEXCHARS[((const unsigned char *)data)[i] & 0x0f]);
+    this->aes = true;
+    this->crc32 = true;
+    this->pmull = true;
+    this->sha1 = true;
+    this->sha2 = true;
+
+#else
+
+#ifdef HWCAP2_AES
+	if (sizeof(void *) == 4) {
+		const long hwcaps2 = getauxval(AT_HWCAP2);
+		this->aes = (hwcaps2 & HWCAP2_AES) != 0;
+		this->crc32 = (hwcaps2 & HWCAP2_CRC32) != 0;
+		this->pmull = (hwcaps2 & HWCAP2_PMULL) != 0;
+		this->sha1 = (hwcaps2 & HWCAP2_SHA1) != 0;
+		this->sha2 = (hwcaps2 & HWCAP2_SHA2) != 0;
+	} else {
+#endif
+		const long hwcaps = getauxval(AT_HWCAP);
+		this->aes = (hwcaps & HWCAP_AES) != 0;
+		this->crc32 = (hwcaps & HWCAP_CRC32) != 0;
+		this->pmull = (hwcaps & HWCAP_PMULL) != 0;
+		this->sha1 = (hwcaps & HWCAP_SHA1) != 0;
+		this->sha2 = (hwcaps & HWCAP_SHA2) != 0;
+#ifdef HWCAP2_AES
 	}
-	return r;
+#endif
+
+#endif // __APPLE__
 }
 
-std::string Utils::unhex(const char *hex,unsigned int maxlen)
+const Utils::ARMCapabilities Utils::ARMCAP;
+#endif
+
+#ifdef ZT_ARCH_X64
+
+Utils::CPUIDRegisters::CPUIDRegisters() noexcept
 {
-	int n = 1;
-	unsigned char c,b = 0;
-	const char *eof = hex + maxlen;
-	std::string r;
+	uint32_t eax, ebx, ecx, edx;
 
-	if (!maxlen)
-		return r;
+#ifdef __WINDOWS__
+	int regs[4];
+	__cpuid(regs,1);
+	eax = (uint32_t)regs[0];
+	ebx = (uint32_t)regs[1];
+	ecx = (uint32_t)regs[2];
+	edx = (uint32_t)regs[3];
+#else
+	__asm__ __volatile__ (
+	"cpuid"
+	: "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+	: "a"(1), "c"(0)
+	);
+#endif
 
-	while ((c = (unsigned char)*(hex++))) {
-		if ((c >= 48)&&(c <= 57)) { // 0..9
-			if ((n ^= 1))
-				r.push_back((char)(b | (c - 48)));
-			else b = (c - 48) << 4;
-		} else if ((c >= 65)&&(c <= 70)) { // A..F
-			if ((n ^= 1))
-				r.push_back((char)(b | (c - (65 - 10))));
-			else b = (c - (65 - 10)) << 4;
-		} else if ((c >= 97)&&(c <= 102)) { // a..f
-			if ((n ^= 1))
-				r.push_back((char)(b | (c - (97 - 10))));
-			else b = (c - (97 - 10)) << 4;
-		}
-		if (hex == eof)
-			break;
-	}
+	rdrand = ((ecx & (1U << 30U)) != 0);
+	aes = (((ecx & (1U << 25U)) != 0) && ((ecx & (1U << 19U)) != 0) && ((ecx & (1U << 1U)) != 0));
+	avx = ((ecx & (1U << 25U)) != 0);
 
-	return r;
+#ifdef __WINDOWS__
+	__cpuid(regs,7);
+	eax = (uint32_t)regs[0];
+	ebx = (uint32_t)regs[1];
+	ecx = (uint32_t)regs[2];
+	edx = (uint32_t)regs[3];
+#else
+	__asm__ __volatile__ (
+	"cpuid"
+	: "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+	: "a"(7), "c"(0)
+	);
+#endif
+
+	vaes = aes && avx && ((ecx & (1U << 9U)) != 0);
+	vpclmulqdq = aes && avx && ((ecx & (1U << 10U)) != 0);
+	avx2 = avx && ((ebx & (1U << 5U)) != 0);
+	avx512f = avx && ((ebx & (1U << 16U)) != 0);
+	sha = ((ebx & (1U << 29U)) != 0);
+	fsrm = ((edx & (1U << 4U)) != 0);
 }
 
-unsigned int Utils::unhex(const char *hex,unsigned int maxlen,void *buf,unsigned int len)
-{
-	int n = 1;
-	unsigned char c,b = 0;
-	unsigned int l = 0;
-	const char *eof = hex + maxlen;
+const Utils::CPUIDRegisters Utils::CPUID;
+#endif
 
-	if (!maxlen)
+// Crazy hack to force memory to be securely zeroed in spite of the best efforts of optimizing compilers.
+static void _Utils_doBurn(volatile uint8_t *ptr,unsigned int len)
+{
+	volatile uint8_t *const end = ptr + len;
+	while (ptr != end) *(ptr++) = (uint8_t)0;
+}
+static void (*volatile _Utils_doBurn_ptr)(volatile uint8_t *,unsigned int) = _Utils_doBurn;
+void Utils::burn(void *ptr,unsigned int len) { (_Utils_doBurn_ptr)((volatile uint8_t *)ptr,len); }
+
+static unsigned long _Utils_itoa(unsigned long n,char *s)
+{
+	if (n == 0)
 		return 0;
-
-	while ((c = (unsigned char)*(hex++))) {
-		if ((c >= 48)&&(c <= 57)) { // 0..9
-			if ((n ^= 1)) {
-				if (l >= len) break;
-				((unsigned char *)buf)[l++] = (b | (c - 48));
-			} else b = (c - 48) << 4;
-		} else if ((c >= 65)&&(c <= 70)) { // A..F
-			if ((n ^= 1)) {
-				if (l >= len) break;
-				((unsigned char *)buf)[l++] = (b | (c - (65 - 10)));
-			} else b = (c - (65 - 10)) << 4;
-		} else if ((c >= 97)&&(c <= 102)) { // a..f
-			if ((n ^= 1)) {
-				if (l >= len) break;
-				((unsigned char *)buf)[l++] = (b | (c - (97 - 10)));
-			} else b = (c - (97 - 10)) << 4;
-		}
-		if (hex == eof)
-			break;
+	unsigned long pos = _Utils_itoa(n / 10,s);
+	if (pos >= 22) // sanity check, should be impossible
+		pos = 22;
+	s[pos] = '0' + (char)(n % 10);
+	return pos + 1;
+}
+char *Utils::decimal(unsigned long n,char s[24])
+{
+	if (n == 0) {
+		s[0] = '0';
+		s[1] = (char)0;
+		return s;
 	}
-
-	return l;
+	s[_Utils_itoa(n,s)] = (char)0;
+	return s;
 }
 
 void Utils::getSecureRandom(void *buf,unsigned int bytes)
@@ -144,6 +217,8 @@ void Utils::getSecureRandom(void *buf,unsigned int bytes)
 	static Mutex globalLock;
 	static Salsa20 s20;
 	static bool s20Initialized = false;
+	static uint8_t randomBuf[65536];
+	static unsigned int randomPtr = sizeof(randomBuf);
 
 	Mutex::Lock _l(globalLock);
 
@@ -161,34 +236,39 @@ void Utils::getSecureRandom(void *buf,unsigned int bytes)
 		s20Key[1] = (uint64_t)buf; // address of buf
 		s20Key[2] = (uint64_t)s20Key; // address of s20Key[]
 		s20Key[3] = (uint64_t)&s20; // address of s20
-		s20.init(s20Key,256,s20Key);
+		s20.init(s20Key,s20Key);
 	}
 
 #ifdef __WINDOWS__
 
 	static HCRYPTPROV cryptProvider = NULL;
 
-	if (cryptProvider == NULL) {
-		if (!CryptAcquireContextA(&cryptProvider,NULL,NULL,PROV_RSA_FULL,CRYPT_VERIFYCONTEXT|CRYPT_SILENT)) {
-			fprintf(stderr,"FATAL ERROR: Utils::getSecureRandom() unable to obtain WinCrypt context!\r\n");
-			exit(1);
-			return;
+	for(unsigned int i=0;i<bytes;++i) {
+		if (randomPtr >= sizeof(randomBuf)) {
+			if (cryptProvider == NULL) {
+				if (!CryptAcquireContextA(&cryptProvider,NULL,NULL,PROV_RSA_FULL,CRYPT_VERIFYCONTEXT|CRYPT_SILENT)) {
+					fprintf(stderr,"FATAL ERROR: Utils::getSecureRandom() unable to obtain WinCrypt context!\r\n");
+					exit(1);
+				}
+			}
+			if (!CryptGenRandom(cryptProvider,(DWORD)sizeof(randomBuf),(BYTE *)randomBuf)) {
+				fprintf(stderr,"FATAL ERROR: Utils::getSecureRandom() CryptGenRandom failed!\r\n");
+				exit(1);
+			}
+			randomPtr = 0;
+			s20.crypt12(randomBuf,randomBuf,sizeof(randomBuf));
+			s20.init(randomBuf,randomBuf);
 		}
-	}
-	if (!CryptGenRandom(cryptProvider,(DWORD)bytes,(BYTE *)buf)) {
-		fprintf(stderr,"FATAL ERROR: Utils::getSecureRandom() CryptGenRandom failed!\r\n");
-		exit(1);
+		((uint8_t *)buf)[i] = randomBuf[randomPtr++];
 	}
 
 #else // not __WINDOWS__
 
-	static char randomBuf[131072];
-	static unsigned int randomPtr = sizeof(randomBuf);
 	static int devURandomFd = -1;
 
-	if (devURandomFd <= 0) {
+	if (devURandomFd < 0) {
 		devURandomFd = ::open("/dev/urandom",O_RDONLY);
-		if (devURandomFd <= 0) {
+		if (devURandomFd < 0) {
 			fprintf(stderr,"FATAL ERROR: Utils::getSecureRandom() unable to open /dev/urandom\n");
 			exit(1);
 			return;
@@ -201,7 +281,7 @@ void Utils::getSecureRandom(void *buf,unsigned int bytes)
 				if ((int)::read(devURandomFd,randomBuf,sizeof(randomBuf)) != (int)sizeof(randomBuf)) {
 					::close(devURandomFd);
 					devURandomFd = ::open("/dev/urandom",O_RDONLY);
-					if (devURandomFd <= 0) {
+					if (devURandomFd < 0) {
 						fprintf(stderr,"FATAL ERROR: Utils::getSecureRandom() unable to open /dev/urandom\n");
 						exit(1);
 						return;
@@ -209,93 +289,13 @@ void Utils::getSecureRandom(void *buf,unsigned int bytes)
 				} else break;
 			}
 			randomPtr = 0;
+			s20.crypt12(randomBuf,randomBuf,sizeof(randomBuf));
+			s20.init(randomBuf,randomBuf);
 		}
-		((char *)buf)[i] = randomBuf[randomPtr++];
+		((uint8_t *)buf)[i] = randomBuf[randomPtr++];
 	}
 
 #endif // __WINDOWS__ or not
-
-	s20.encrypt12(buf,buf,bytes);
-}
-
-std::vector<std::string> Utils::split(const char *s,const char *const sep,const char *esc,const char *quot)
-{
-	std::vector<std::string> fields;
-	std::string buf;
-
-	if (!esc)
-		esc = "";
-	if (!quot)
-		quot = "";
-
-	bool escapeState = false;
-	char quoteState = 0;
-	while (*s) {
-		if (escapeState) {
-			escapeState = false;
-			buf.push_back(*s);
-		} else if (quoteState) {
-			if (*s == quoteState) {
-				quoteState = 0;
-				fields.push_back(buf);
-				buf.clear();
-			} else buf.push_back(*s);
-		} else {
-			const char *quotTmp;
-			if (strchr(esc,*s))
-				escapeState = true;
-			else if ((buf.size() <= 0)&&((quotTmp = strchr(quot,*s))))
-				quoteState = *quotTmp;
-			else if (strchr(sep,*s)) {
-				if (buf.size() > 0) {
-					fields.push_back(buf);
-					buf.clear();
-				} // else skip runs of seperators
-			} else buf.push_back(*s);
-		}
-		++s;
-	}
-
-	if (buf.size())
-		fields.push_back(buf);
-
-	return fields;
-}
-
-bool Utils::scopy(char *dest,unsigned int len,const char *src)
-{
-	if (!len)
-		return false; // sanity check
-	if (!src) {
-		*dest = (char)0;
-		return true;
-	}
-	char *end = dest + len;
-	while ((*dest++ = *src++)) {
-		if (dest == end) {
-			*(--dest) = (char)0;
-			return false;
-		}
-	}
-	return true;
-}
-
-unsigned int Utils::snprintf(char *buf,unsigned int len,const char *fmt,...)
-	throw(std::length_error)
-{
-	va_list ap;
-
-	va_start(ap,fmt);
-	int n = (int)vsnprintf(buf,len,fmt,ap);
-	va_end(ap);
-
-	if ((n >= (int)len)||(n < 0)) {
-		if (len)
-			buf[len - 1] = (char)0;
-		throw std::length_error("buf[] overflow in Utils::snprintf");
-	}
-
-	return (unsigned int)n;
 }
 
 } // namespace ZeroTier

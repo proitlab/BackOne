@@ -1,20 +1,15 @@
 /*
- * ZeroTier One - Network Virtualization Everywhere
- * Copyright (C) 2011-2016  ZeroTier, Inc.  https://www.zerotier.com/
+ * Copyright (c)2013-2020 ZeroTier, Inc.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file in the project's root directory.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * Change Date: 2025-01-01
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * On the date above, in accordance with the Business Source License, use
+ * of this software will be governed by version 2.0 of the Apache License.
  */
+/****/
 
 #ifndef ZT_OSUTILS_HPP
 #define ZT_OSUTILS_HPP
@@ -25,7 +20,6 @@
 #include <string.h>
 #include <time.h>
 
-#include <string>
 #include <stdexcept>
 #include <vector>
 #include <map>
@@ -43,6 +37,13 @@
 #include <sys/time.h>
 #include <sys/stat.h>
 #include <arpa/inet.h>
+#ifdef __LINUX__
+#include <sys/syscall.h>
+#endif
+#endif
+
+#ifndef OMIT_JSON_SUPPORT
+#include "../ext/json/json.hpp"
 #endif
 
 namespace ZeroTier {
@@ -53,6 +54,20 @@ namespace ZeroTier {
 class OSUtils
 {
 public:
+	/**
+	 * Variant of snprintf that is portable and throws an exception
+	 *
+	 * This just wraps the local implementation whatever it's called, while
+	 * performing a few other checks and adding exceptions for overflow.
+	 *
+	 * @param buf Buffer to write to
+	 * @param len Length of buffer in bytes
+	 * @param fmt Format string
+	 * @param ... Format arguments
+	 * @throws std::length_error buf[] too short (buf[] will still be left null-terminated)
+	 */
+	static unsigned int ztsnprintf(char *buf,unsigned int len,const char *fmt,...);
+
 #ifdef __UNIX_LIKE__
 	/**
 	 * Close STDOUT_FILENO and STDERR_FILENO and replace them with output to given path
@@ -75,7 +90,6 @@ public:
 	 * @return True if delete was successful
 	 */
 	static inline bool rm(const char *path)
-		throw()
 	{
 #ifdef __WINDOWS__
 		return (DeleteFileA(path) != FALSE);
@@ -83,7 +97,7 @@ public:
 		return (unlink(path) == 0);
 #endif
 	}
-	static inline bool rm(const std::string &path) throw() { return rm(path.c_str()); }
+	static inline bool rm(const std::string &path) { return rm(path.c_str()); }
 
 	static inline bool mkdir(const char *path)
 	{
@@ -97,17 +111,44 @@ public:
 		return true;
 #endif
 	}
-	static inline bool mkdir(const std::string &path) throw() { return OSUtils::mkdir(path.c_str()); }
+	static inline bool mkdir(const std::string &path) { return OSUtils::mkdir(path.c_str()); }
+
+	static inline bool rename(const char *o,const char *n)
+	{
+#ifdef __WINDOWS__
+		DeleteFileA(n);
+		return (::rename(o,n) == 0);
+#else
+		return (::rename(o,n) == 0);
+#endif
+	}
 
 	/**
 	 * List a directory's contents
 	 *
-	 * This returns only files, not sub-directories.
-	 *
 	 * @param path Path to list
-	 * @return Names of files in directory
+	 * @param includeDirectories If true, include directories as well as files
+	 * @return Names of files in directory (without path prepended)
 	 */
-	static std::vector<std::string> listDirectory(const char *path);
+	static std::vector<std::string> listDirectory(const char *path,bool includeDirectories = false);
+
+	/**
+	 * Clean a directory of files whose last modified time is older than this
+	 *
+	 * This ignores directories, symbolic links, and other special files.
+	 *
+	 * @param olderThan Last modified older than timestamp (ms since epoch)
+	 * @return Number of cleaned files or negative on fatal error
+	 */
+	static long cleanDirectory(const char *path,const int64_t olderThan);
+
+	/**
+	 * Delete a directory and all its files and subdirectories recursively
+	 *
+	 * @param path Path to delete
+	 * @return True on success
+	 */
+	static bool rmDashRf(const char *path);
 
 	/**
 	 * Set modes on a file to something secure
@@ -155,32 +196,23 @@ public:
 	static std::vector<InetAddress> resolve(const char *name);
 
 	/**
-	 * @return Current time in milliseconds since epoch
+	 * @return Current time in a human-readable format
 	 */
-	static inline uint64_t now()
-		throw()
+	static inline std::string humanReadableTimestamp()
 	{
-#ifdef __WINDOWS__
-		FILETIME ft;
-		SYSTEMTIME st;
-		ULARGE_INTEGER tmp;
-		GetSystemTime(&st);
-		SystemTimeToFileTime(&st,&ft);
-		tmp.LowPart = ft.dwLowDateTime;
-		tmp.HighPart = ft.dwHighDateTime;
-		return ( ((tmp.QuadPart - 116444736000000000ULL) / 10000L) + st.wMilliseconds );
-#else
-		struct timeval tv;
-		gettimeofday(&tv,(struct timezone *)0);
-		return ( (1000ULL * (uint64_t)tv.tv_sec) + (uint64_t)(tv.tv_usec / 1000) );
-#endif
-	};
+		time_t rawtime;
+		struct tm * timeinfo;
+		char buffer [80];
+		time (&rawtime);
+		timeinfo = localtime (&rawtime);
+		strftime (buffer,80,"%F %T",timeinfo);
+		return std::string(buffer);
+	}
 
 	/**
-	 * @return Current time in seconds since epoch, to the highest available resolution
+	 * @return Current time in milliseconds since epoch
 	 */
-	static inline double nowf()
-		throw()
+	static inline int64_t now()
 	{
 #ifdef __WINDOWS__
 		FILETIME ft;
@@ -190,13 +222,13 @@ public:
 		SystemTimeToFileTime(&st,&ft);
 		tmp.LowPart = ft.dwLowDateTime;
 		tmp.HighPart = ft.dwHighDateTime;
-		return (((double)(tmp.QuadPart - 116444736000000000ULL)) / 10000000.0);
+		return (int64_t)( ((tmp.QuadPart - 116444736000000000LL) / 10000L) + st.wMilliseconds );
 #else
 		struct timeval tv;
 		gettimeofday(&tv,(struct timezone *)0);
-		return ( ((double)tv.tv_sec) + (((double)tv.tv_usec) / 1000000.0) );
+		return ( (1000LL * (int64_t)tv.tv_sec) + (int64_t)(tv.tv_usec / 1000) );
 #endif
-	}
+	};
 
 	/**
 	 * Read the full contents of a file into a string buffer
@@ -221,6 +253,17 @@ public:
 	static bool writeFile(const char *path,const void *buf,unsigned int len);
 
 	/**
+	 * Split a string by delimiter, with optional escape and quote characters
+	 *
+	 * @param s String to split
+	 * @param sep One or more separators
+	 * @param esc Zero or more escape characters
+	 * @param quot Zero or more quote characters
+	 * @return Vector of tokens
+	 */
+	static std::vector<std::string> split(const char *s,const char *const sep,const char *esc,const char *quot);
+
+	/**
 	 * Write a block of data to disk, replacing any current file contents
 	 *
 	 * @param path Path to write
@@ -239,6 +282,17 @@ public:
 	 * @return Platform default ZeroTier One home path
 	 */
 	static std::string platformDefaultHomePath();
+
+#ifndef OMIT_JSON_SUPPORT
+	static nlohmann::json jsonParse(const std::string &buf);
+	static std::string jsonDump(const nlohmann::json &j,int indentation = 1);
+	static uint64_t jsonInt(const nlohmann::json &jv,const uint64_t dfl);
+	static double jsonDouble(const nlohmann::json &jv,const double dfl);
+	static uint64_t jsonIntHex(const nlohmann::json &jv,const uint64_t dfl);
+	static bool jsonBool(const nlohmann::json &jv,const bool dfl);
+	static std::string jsonString(const nlohmann::json &jv,const char *dfl);
+	static std::string jsonBinFromHex(const nlohmann::json &jv);
+#endif // OMIT_JSON_SUPPORT
 
 private:
 	static const unsigned char TOLOWER_TABLE[256];

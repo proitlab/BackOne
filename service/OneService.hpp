@@ -1,42 +1,36 @@
 /*
- * ZeroTier One - Network Virtualization Everywhere
- * Copyright (C) 2011-2016  ZeroTier, Inc.  https://www.zerotier.com/
+ * Copyright (c)2019 ZeroTier, Inc.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file in the project's root directory.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * Change Date: 2025-01-01
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * On the date above, in accordance with the Business Source License, use
+ * of this software will be governed by version 2.0 of the Apache License.
  */
+/****/
 
 #ifndef ZT_ONESERVICE_HPP
 #define ZT_ONESERVICE_HPP
 
 #include <string>
+#include <vector>
 
 namespace ZeroTier {
 
+#ifdef ZT_SDK
+class VirtualTap;
+// Use the virtual libzt endpoint instead of a tun/tap port driver
+namespace ZeroTier { typedef VirtualTap EthernetTap; }
+#endif
+
+// Forward declaration so we can avoid dragging everything in
+struct InetAddress;
+class Node;
+
 /**
  * Local service for ZeroTier One as system VPN/NFV provider
- *
- * If built with ZT_ENABLE_NETWORK_CONTROLLER defined, this includes and
- * runs controller/SqliteNetworkController with a database called
- * controller.db in the specified home directory.
- *
- * If built with ZT_AUTO_UPDATE, an official ZeroTier update URL is
- * periodically checked and updates are automatically downloaded, verified
- * against a built-in list of update signing keys, and installed. This is
- * only supported for certain platforms.
- *
- * If built with ZT_ENABLE_CLUSTER, a 'cluster' file is checked and if
- * present is read to determine the identity of other cluster members.
  */
 class OneService
 {
@@ -78,6 +72,12 @@ public:
 		bool allowManaged;
 
 		/**
+		 * Whitelist of addresses that can be configured by this network.
+		 * If empty and allowManaged is true, allow all private/pseudoprivate addresses.
+		 */
+		std::vector<InetAddress> allowManagedWhitelist;
+
+		/**
 		 * Allow configuration of IPs and routes within global (Internet) IP space?
 		 */
 		bool allowGlobal;
@@ -86,17 +86,17 @@ public:
 		 * Allow overriding of system default routes for "full tunnel" operation?
 		 */
 		bool allowDefault;
+
+		/**
+		 * Allow configuration of DNS for the network
+		 */
+		bool allowDNS;
 	};
 
 	/**
 	 * @return Platform default home path or empty string if this platform doesn't have one
 	 */
 	static std::string platformDefaultHomePath();
-
-	/**
-	 * @return Auto-update URL or empty string if auto-updates unsupported or not enabled
-	 */
-	static std::string autoUpdateUrl();
 
 	/**
 	 * Create a new instance of the service
@@ -111,9 +111,7 @@ public:
 	 * @param hp Home path
 	 * @param port TCP and UDP port for packets and HTTP control (if 0, pick random port)
 	 */
-	static OneService *newInstance(
-		const char *hp,
-		unsigned int port);
+	static OneService *newInstance(const char *hp,unsigned int port);
 
 	virtual ~OneService();
 
@@ -141,10 +139,20 @@ public:
 	 */
 	virtual std::string portDeviceName(uint64_t nwid) const = 0;
 
+#ifdef ZT_SDK
 	/**
-	 * @return True if TCP fallback is currently active
+	 * Whether we allow access to the service via local HTTP requests (disabled by default in libzt)
 	 */
-	virtual bool tcpFallbackActive() const = 0;
+	bool allowHttpBackplaneManagement = false;
+	/**
+	 * @return Reference to the Node
+	 */
+	virtual Node * getNode() = 0;
+	/**
+	 * Fills out a structure with network-specific route information
+	 */
+	virtual void getRoutes(uint64_t nwid, void *routeArray, unsigned int *numRoutes) = 0;
+#endif
 
 	/**
 	 * Terminate background service (can be called from other threads)

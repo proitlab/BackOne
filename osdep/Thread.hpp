@@ -1,20 +1,15 @@
 /*
- * ZeroTier One - Network Virtualization Everywhere
- * Copyright (C) 2011-2016  ZeroTier, Inc.  https://www.zerotier.com/
+ * Copyright (c)2019 ZeroTier, Inc.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file in the project's root directory.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * Change Date: 2025-01-01
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * On the date above, in accordance with the Business Source License, use
+ * of this software will be governed by version 2.0 of the Apache License.
  */
+/****/
 
 #ifndef ZT_THREAD_HPP
 #define ZT_THREAD_HPP
@@ -28,6 +23,7 @@
 #include <WinSock2.h>
 #include <Windows.h>
 #include <string.h>
+
 #include "../node/Mutex.hpp"
 
 namespace ZeroTier {
@@ -45,7 +41,6 @@ class Thread
 {
 public:
 	Thread()
-		throw()
 	{
 		_th = NULL;
 		_tid = 0;
@@ -53,7 +48,6 @@ public:
 
 	template<typename C>
 	static inline Thread start(C *instance)
-		throw(std::runtime_error)
 	{
 		Thread t;
 		t._th = CreateThread(NULL,0,&___zt_threadMain<C>,(LPVOID)instance,0,&t._tid);
@@ -83,11 +77,13 @@ public:
 	// Not available on *nix platforms
 	static inline void cancelIO(const Thread &t)
 	{
+#if !defined(__MINGW32__) && !defined(__MINGW64__) // CancelSynchronousIo not available in MSYS2
 		if (t._th != NULL)
 			CancelSynchronousIo(t._th);
+#endif
 	}
 
-	inline operator bool() const throw() { return (_th != NULL); }
+	inline operator bool() const { return (_th != NULL); }
 
 private:
 	HANDLE _th;
@@ -122,24 +118,18 @@ class Thread
 {
 public:
 	Thread()
-		throw()
 	{
-		memset(&_tid,0,sizeof(_tid));
-		_started = false;
+		memset(this,0,sizeof(Thread));
 	}
 
 	Thread(const Thread &t)
-		throw()
 	{
-		memcpy(&_tid,&(t._tid),sizeof(_tid));
-		_started = t._started;
+		memcpy(this,&t,sizeof(Thread));
 	}
 
 	inline Thread &operator=(const Thread &t)
-		throw()
 	{
-		memcpy(&_tid,&(t._tid),sizeof(_tid));
-		_started = t._started;
+		memcpy(this,&t,sizeof(Thread));
 		return *this;
 	}
 
@@ -153,12 +143,20 @@ public:
 	 */
 	template<typename C>
 	static inline Thread start(C *instance)
-		throw(std::runtime_error)
 	{
 		Thread t;
-		t._started = true;
-		if (pthread_create(&t._tid,(const pthread_attr_t *)0,&___zt_threadMain<C>,instance))
+		pthread_attr_t tattr;
+		pthread_attr_init(&tattr);
+		// This corrects for systems with abnormally small defaults (musl) and also
+		// shrinks the stack on systems with large defaults to save a bit of memory.
+		pthread_attr_setstacksize(&tattr,ZT_THREAD_MIN_STACK_SIZE);
+		if (pthread_create(&t._tid,&tattr,&___zt_threadMain<C>,instance)) {
+			pthread_attr_destroy(&tattr);
 			throw std::runtime_error("pthread_create() failed, unable to create thread");
+		} else {
+			t._started = true;
+			pthread_attr_destroy(&tattr);
+		}
 		return t;
 	}
 
@@ -180,7 +178,7 @@ public:
 	 */
 	static inline void sleep(unsigned long ms) { usleep(ms * 1000); }
 
-	inline operator bool() const throw() { return (_started); }
+	inline operator bool() const { return (_started); }
 
 private:
 	pthread_t _tid;

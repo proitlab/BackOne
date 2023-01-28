@@ -1,3 +1,16 @@
+/*
+ * Copyright (c)2019 ZeroTier, Inc.
+ *
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file in the project's root directory.
+ *
+ * Change Date: 2025-01-01
+ *
+ * On the date above, in accordance with the Business Source License, use
+ * of this software will be governed by version 2.0 of the Apache License.
+ */
+/****/
+
 #ifndef ZT_MANAGEDROUTE_HPP
 #define ZT_MANAGEDROUTE_HPP
 
@@ -6,9 +19,12 @@
 
 #include "../node/InetAddress.hpp"
 #include "../node/Utils.hpp"
+#include "../node/SharedPtr.hpp"
+#include "../node/AtomicCounter.hpp"
 
 #include <stdexcept>
 #include <vector>
+#include <map>
 
 namespace ZeroTier {
 
@@ -17,57 +33,11 @@ namespace ZeroTier {
  */
 class ManagedRoute
 {
+	friend class SharedPtr<ManagedRoute>;
+
 public:
-	ManagedRoute()
-	{
-		_device[0] = (char)0;
-		_systemDevice[0] = (char)0;
-		_applied = false;
-	}
-
-	~ManagedRoute()
-	{
-		this->remove();
-	}
-
-	ManagedRoute(const ManagedRoute &r)
-	{
-		_applied = false;
-		*this = r;
-	}
-
-	inline ManagedRoute &operator=(const ManagedRoute &r)
-	{
-		if ((!_applied)&&(!r._applied)) {
-			memcpy(this,&r,sizeof(ManagedRoute)); // InetAddress is memcpy'able
-		} else {
-			fprintf(stderr,"Applied ManagedRoute isn't copyable!\n");
-			abort();
-		}
-		return *this;
-	}
-
-	/**
-	 * Initialize object and set route
-	 *
-	 * Note: on Windows, use the interface NET_LUID in hexadecimal as the
-	 * "device name."
-	 *
-	 * @param target Route target (e.g. 0.0.0.0/0 for default)
-	 * @param via Route next L3 hop or NULL InetAddress if local in which case it will be routed via device
-	 * @param device Name or hex LUID of ZeroTier device (e.g. zt#)
-	 * @return True if route was successfully set
-	 */
-	inline bool set(const InetAddress &target,const InetAddress &via,const char *device)
-	{
-		if ((!via)&&(!device[0]))
-			return false;
-		this->remove();
-		_target = target;
-		_via = via;
-		Utils::scopy(_device,sizeof(_device),device);
-		return this->sync();
-	}
+	ManagedRoute(const InetAddress &target,const InetAddress &via,const InetAddress &src,const char *device);
+	~ManagedRoute();
 
 	/**
 	 * Set or update currently set route
@@ -90,16 +60,22 @@ public:
 
 	inline const InetAddress &target() const { return _target; }
 	inline const InetAddress &via() const { return _via; }
+	inline const InetAddress &src() const { return _src; }
 	inline const char *device() const { return _device; }
 
 private:
+	ManagedRoute(const ManagedRoute &) {}
+	inline ManagedRoute &operator=(const ManagedRoute &) { return *this; }
 
 	InetAddress _target;
 	InetAddress _via;
+	InetAddress _src;
 	InetAddress _systemVia; // for route overrides
+	std::map<InetAddress,bool> _applied; // routes currently applied
 	char _device[128];
 	char _systemDevice[128]; // for route overrides
-	bool _applied;
+
+	AtomicCounter __refCount;
 };
 
 } // namespace ZeroTier

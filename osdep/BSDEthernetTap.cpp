@@ -1,20 +1,15 @@
 /*
- * ZeroTier One - Network Virtualization Everywhere
- * Copyright (C) 2011-2016  ZeroTier, Inc.  https://www.zerotier.com/
+ * Copyright (c)2019 ZeroTier, Inc.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file in the project's root directory.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * Change Date: 2025-01-01
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * On the date above, in accordance with the Business Source License, use
+ * of this software will be governed by version 2.0 of the Apache License.
  */
+/****/
 
 #include <stdint.h>
 #include <stdio.h>
@@ -71,7 +66,7 @@ BSDEthernetTap::BSDEthernetTap(
 	unsigned int metric,
 	uint64_t nwid,
 	const char *friendlyName,
-	void (*handler)(void *,uint64_t,const MAC &,const MAC &,unsigned int,unsigned int,const void *,unsigned int),
+	void (*handler)(void *,void *,uint64_t,const MAC &,const MAC &,unsigned int,unsigned int,const void *,unsigned int),
 	void *arg) :
 	_handler(handler),
 	_arg(arg),
@@ -83,10 +78,12 @@ BSDEthernetTap::BSDEthernetTap(
 {
 	static Mutex globalTapCreateLock;
 	char devpath[64],ethaddr[64],mtustr[32],metstr[32],tmpdevname[32];
-	struct stat stattmp;
 
-	// On FreeBSD at least we can rename, so use nwid to generate a deterministic unique zt#### name using base32
-	// As a result we don't use desiredDevice
+	Mutex::Lock _gl(globalTapCreateLock);
+
+#ifdef __FreeBSD__
+	/* FreeBSD allows long interface names and interface renaming */
+
 	_dev = "zt";
 	_dev.push_back(ZT_BASE32_CHARS[(unsigned long)((nwid >> 60) & 0x1f)]);
 	_dev.push_back(ZT_BASE32_CHARS[(unsigned long)((nwid >> 55) & 0x1f)]);
@@ -102,17 +99,10 @@ BSDEthernetTap::BSDEthernetTap(
 	_dev.push_back(ZT_BASE32_CHARS[(unsigned long)((nwid >> 5) & 0x1f)]);
 	_dev.push_back(ZT_BASE32_CHARS[(unsigned long)(nwid & 0x1f)]);
 
-	Mutex::Lock _gl(globalTapCreateLock);
-
-	if (mtu > 2800)
-		throw std::runtime_error("max tap MTU is 2800");
-
-	// On BSD we create taps and they can have high numbers, so use ones starting
-	// at 9993 to not conflict with other stuff. Then we rename it to zt<base32 of nwid>
 	std::vector<std::string> devFiles(OSUtils::listDirectory("/dev"));
 	for(int i=9993;i<(9993+128);++i) {
-		Utils::snprintf(tmpdevname,sizeof(tmpdevname),"tap%d",i);
-		Utils::snprintf(devpath,sizeof(devpath),"/dev/%s",tmpdevname);
+		OSUtils::ztsnprintf(tmpdevname,sizeof(tmpdevname),"tap%d",i);
+		OSUtils::ztsnprintf(devpath,sizeof(devpath),"/dev/%s",tmpdevname);
 		if (std::find(devFiles.begin(),devFiles.end(),std::string(tmpdevname)) == devFiles.end()) {
 			long cpid = (long)vfork();
 			if (cpid == 0) {
@@ -123,6 +113,7 @@ BSDEthernetTap::BSDEthernetTap(
 				::waitpid(cpid,&exitcode,0);
 			} else throw std::runtime_error("fork() failed");
 
+			struct stat stattmp;
 			if (!stat(devpath,&stattmp)) {
 				cpid = (long)vfork();
 				if (cpid == 0) {
@@ -144,6 +135,19 @@ BSDEthernetTap::BSDEthernetTap(
 			}
 		}
 	}
+#else
+	/* Other BSDs like OpenBSD only have a limited number of tap devices that cannot be renamed */
+
+	for(int i=0;i<64;++i) {
+		OSUtils::ztsnprintf(tmpdevname,sizeof(tmpdevname),"tap%d",i);
+		OSUtils::ztsnprintf(devpath,sizeof(devpath),"/dev/%s",tmpdevname);
+		_fd = ::open(devpath,O_RDWR);
+		if (_fd > 0) {
+			_dev = tmpdevname;
+			break;
+		}
+	}
+#endif
 
 	if (_fd <= 0)
 		throw std::runtime_error("unable to open TAP device or no more devices available");
@@ -154,9 +158,9 @@ BSDEthernetTap::BSDEthernetTap(
 	}
 
 	// Configure MAC address and MTU, bring interface up
-	Utils::snprintf(ethaddr,sizeof(ethaddr),"%.2x:%.2x:%.2x:%.2x:%.2x:%.2x",(int)mac[0],(int)mac[1],(int)mac[2],(int)mac[3],(int)mac[4],(int)mac[5]);
-	Utils::snprintf(mtustr,sizeof(mtustr),"%u",_mtu);
-	Utils::snprintf(metstr,sizeof(metstr),"%u",_metric);
+	OSUtils::ztsnprintf(ethaddr,sizeof(ethaddr),"%.2x:%.2x:%.2x:%.2x:%.2x:%.2x",(int)mac[0],(int)mac[1],(int)mac[2],(int)mac[3],(int)mac[4],(int)mac[5]);
+	OSUtils::ztsnprintf(mtustr,sizeof(mtustr),"%u",_mtu);
+	OSUtils::ztsnprintf(metstr,sizeof(metstr),"%u",_metric);
 	long cpid = (long)vfork();
 	if (cpid == 0) {
 		::execl("/sbin/ifconfig","/sbin/ifconfig",_dev.c_str(),"lladdr",ethaddr,"mtu",mtustr,"metric",metstr,"up",(const char *)0);
@@ -210,7 +214,8 @@ static bool ___removeIp(const std::string &_dev,const InetAddress &ip)
 {
 	long cpid = (long)vfork();
 	if (cpid == 0) {
-		execl("/sbin/ifconfig","/sbin/ifconfig",_dev.c_str(),"inet",ip.toIpString().c_str(),"-alias",(const char *)0);
+		char ipbuf[64];
+		execl("/sbin/ifconfig","/sbin/ifconfig",_dev.c_str(),"inet",ip.toIpString(ipbuf),"-alias",(const char *)0);
 		_exit(-1);
 	} else if (cpid > 0) {
 		int exitcode = -1;
@@ -239,7 +244,8 @@ bool BSDEthernetTap::addIp(const InetAddress &ip)
 
 	long cpid = (long)vfork();
 	if (cpid == 0) {
-		::execl("/sbin/ifconfig","/sbin/ifconfig",_dev.c_str(),ip.isV4() ? "inet" : "inet6",ip.toString().c_str(),"alias",(const char *)0);
+		char tmp[128];
+		::execl("/sbin/ifconfig","/sbin/ifconfig",_dev.c_str(),ip.isV4() ? "inet" : "inet6",ip.toString(tmp),"alias",(const char *)0);
 		::_exit(-1);
 	} else if (cpid > 0) {
 		int exitcode = -1;
@@ -301,7 +307,7 @@ std::vector<InetAddress> BSDEthernetTap::ips() const
 
 void BSDEthernetTap::put(const MAC &from,const MAC &to,unsigned int etherType,const void *data,unsigned int len)
 {
-	char putBuf[4096];
+	char putBuf[ZT_MAX_MTU + 64];
 	if ((_fd > 0)&&(len <= _mtu)&&(_enabled)) {
 		to.copyTo(putBuf,6);
 		from.copyTo(putBuf + 6,6);
@@ -325,6 +331,7 @@ void BSDEthernetTap::scanMulticastGroups(std::vector<MulticastGroup> &added,std:
 {
 	std::vector<MulticastGroup> newGroups;
 
+#ifndef __OpenBSD__
 	struct ifmaddrs *ifmap = (struct ifmaddrs *)0;
 	if (!getifmaddrs(&ifmap)) {
 		struct ifmaddrs *p = ifmap;
@@ -339,6 +346,7 @@ void BSDEthernetTap::scanMulticastGroups(std::vector<MulticastGroup> &added,std:
 		}
 		freeifmaddrs(ifmap);
 	}
+#endif // __OpenBSD__
 
 	std::vector<InetAddress> allIps(ips());
 	for(std::vector<InetAddress>::iterator ip(allIps.begin());ip!=allIps.end();++ip)
@@ -359,49 +367,22 @@ void BSDEthernetTap::scanMulticastGroups(std::vector<MulticastGroup> &added,std:
 	_multicastGroups.swap(newGroups);
 }
 
-/*
-bool BSDEthernetTap::updateMulticastGroups(std::set<MulticastGroup> &groups)
+void BSDEthernetTap::setMtu(unsigned int mtu)
 {
-	std::set<MulticastGroup> newGroups;
-	struct ifmaddrs *ifmap = (struct ifmaddrs *)0;
-	if (!getifmaddrs(&ifmap)) {
-		struct ifmaddrs *p = ifmap;
-		while (p) {
-			if (p->ifma_addr->sa_family == AF_LINK) {
-				struct sockaddr_dl *in = (struct sockaddr_dl *)p->ifma_name;
-				struct sockaddr_dl *la = (struct sockaddr_dl *)p->ifma_addr;
-				if ((la->sdl_alen == 6)&&(in->sdl_nlen <= _dev.length())&&(!memcmp(_dev.data(),in->sdl_data,in->sdl_nlen)))
-					newGroups.insert(MulticastGroup(MAC(la->sdl_data + la->sdl_nlen,6),0));
-			}
-			p = p->ifma_next;
-		}
-		freeifmaddrs(ifmap);
-	}
-
-	{
-		std::set<InetAddress> allIps(ips());
-		for(std::set<InetAddress>::const_iterator i(allIps.begin());i!=allIps.end();++i)
-			newGroups.insert(MulticastGroup::deriveMulticastGroupForAddressResolution(*i));
-	}
-
-	bool changed = false;
-
-	for(std::set<MulticastGroup>::iterator mg(newGroups.begin());mg!=newGroups.end();++mg) {
-		if (!groups.count(*mg)) {
-			groups.insert(*mg);
-			changed = true;
+	if (mtu != _mtu) {
+		_mtu = mtu;
+		long cpid = (long)vfork();
+		if (cpid == 0) {
+			char tmp[64];
+			OSUtils::ztsnprintf(tmp,sizeof(tmp),"%u",mtu);
+			execl("/sbin/ifconfig","/sbin/ifconfig",_dev.c_str(),"mtu",tmp,(const char *)0);
+			_exit(-1);
+		} else if (cpid > 0) {
+			int exitcode = -1;
+			waitpid(cpid,&exitcode,0);
 		}
 	}
-	for(std::set<MulticastGroup>::iterator mg(groups.begin());mg!=groups.end();) {
-		if ((!newGroups.count(*mg))&&(*mg != _blindWildcardMulticastGroup)) {
-			groups.erase(mg++);
-			changed = true;
-		} else ++mg;
-	}
-
-	return changed;
 }
-*/
 
 void BSDEthernetTap::threadMain()
 	throw()
@@ -409,7 +390,7 @@ void BSDEthernetTap::threadMain()
 	fd_set readfds,nullfds;
 	MAC to,from;
 	int n,nfds,r;
-	char getBuf[8194];
+	char getBuf[ZT_MAX_MTU + 64];
 
 	// Wait for a moment after startup -- wait for Network to finish
 	// constructing itself.
@@ -446,8 +427,7 @@ void BSDEthernetTap::threadMain()
 						to.setTo(getBuf,6);
 						from.setTo(getBuf + 6,6);
 						unsigned int etherType = ntohs(((const uint16_t *)getBuf)[6]);
-						// TODO: VLAN support
-						_handler(_arg,_nwid,from,to,etherType,0,(const void *)(getBuf + 14),r - 14);
+						_handler(_arg,(void *)0,_nwid,from,to,etherType,0,(const void *)(getBuf + 14),r - 14);
 					}
 
 					r = 0;

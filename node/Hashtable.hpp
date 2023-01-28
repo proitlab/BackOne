@@ -1,23 +1,20 @@
 /*
- * ZeroTier One - Network Virtualization Everywhere
- * Copyright (C) 2011-2016  ZeroTier, Inc.  https://www.zerotier.com/
+ * Copyright (c)2019 ZeroTier, Inc.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file in the project's root directory.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * Change Date: 2025-01-01
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * On the date above, in accordance with the Business Source License, use
+ * of this software will be governed by version 2.0 of the Apache License.
  */
+/****/
 
 #ifndef ZT_HASHTABLE_HPP
 #define ZT_HASHTABLE_HPP
+
+#include "Constants.hpp"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -32,11 +29,6 @@ namespace ZeroTier {
 
 /**
  * A minimal hash table implementation for the ZeroTier core
- *
- * This is not a drop-in replacement for STL containers, and has several
- * limitations. Keys can be uint64_t or an object, and if the latter they
- * must implement a method called hashCode() that returns an unsigned long
- * value that is evenly distributed.
  */
 template<typename K,typename V>
 class Hashtable
@@ -100,18 +92,18 @@ public:
 		Hashtable *_ht;
 		_Bucket *_b;
 	};
-	friend class Hashtable::Iterator;
+	//friend class Hashtable<K,V>::Iterator;
 
 	/**
-	 * @param bc Initial capacity in buckets (default: 128, must be nonzero)
+	 * @param bc Initial capacity in buckets (default: 64, must be nonzero)
 	 */
-	Hashtable(unsigned long bc = 128) :
+	Hashtable(unsigned long bc = 64) :
 		_t(reinterpret_cast<_Bucket **>(::malloc(sizeof(_Bucket *) * bc))),
 		_bc(bc),
 		_s(0)
 	{
 		if (!_t)
-			throw std::bad_alloc();
+			throw ZT_EXCEPTION_OUT_OF_MEMORY;
 		for(unsigned long i=0;i<bc;++i)
 			_t[i] = (_Bucket *)0;
 	}
@@ -122,7 +114,7 @@ public:
 		_s(ht._s)
 	{
 		if (!_t)
-			throw std::bad_alloc();
+			throw ZT_EXCEPTION_OUT_OF_MEMORY;
 		for(unsigned long i=0;i<_bc;++i)
 			_t[i] = (_Bucket *)0;
 		for(unsigned long i=0;i<_bc;++i) {
@@ -251,6 +243,24 @@ public:
 	inline const V *get(const K &k) const { return const_cast<Hashtable *>(this)->get(k); }
 
 	/**
+	 * @param k Key
+	 * @param v Value to fill with result
+	 * @return True if value was found and set (if false, v is not modified)
+	 */
+	inline bool get(const K &k,V &v) const
+	{
+		_Bucket *b = _t[_hc(k) % _bc];
+		while (b) {
+			if (b->k == k) {
+				v = b->v;
+				return true;
+			}
+			b = b->next;
+		}
+		return false;
+	}
+
+	/**
 	 * @param k Key to check
 	 * @return True if key is present
 	 */
@@ -351,27 +361,22 @@ public:
 	/**
 	 * @return Number of entries
 	 */
-	inline unsigned long size() const throw() { return _s; }
+	inline unsigned long size() const { return _s; }
 
 	/**
 	 * @return True if table is empty
 	 */
-	inline bool empty() const throw() { return (_s == 0); }
+	inline bool empty() const { return (_s == 0); }
 
 private:
 	template<typename O>
 	static inline unsigned long _hc(const O &obj)
 	{
-		return obj.hashCode();
+		return (unsigned long)obj.hashCode();
 	}
 	static inline unsigned long _hc(const uint64_t i)
 	{
-		/* NOTE: this assumes that 'i' is evenly distributed, which is the case for
-		 * packet IDs and network IDs -- the two use cases in ZT for uint64_t keys.
-		 * These values are also greater than 0xffffffff so they'll map onto a full
-		 * bucket count just fine no matter what happens. Normally you'd want to
-		 * hash an integer key index in a hash table. */
-		return (unsigned long)i;
+		return (unsigned long)(i ^ (i >> 32)); // good for network IDs and addresses
 	}
 	static inline unsigned long _hc(const uint32_t i)
 	{
@@ -380,6 +385,10 @@ private:
 	static inline unsigned long _hc(const uint16_t i)
 	{
 		return ((unsigned long)i * (unsigned long)0x9e3779b1);
+	}
+	static inline unsigned long _hc(const int i)
+	{
+		return ((unsigned long)i * (unsigned long)0x9e3379b1);
 	}
 
 	inline void _grow()

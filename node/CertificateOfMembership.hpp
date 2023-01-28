@@ -1,20 +1,15 @@
 /*
- * ZeroTier One - Network Virtualization Everywhere
- * Copyright (C) 2011-2016  ZeroTier, Inc.  https://www.zerotier.com/
+ * Copyright (c)2019 ZeroTier, Inc.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file in the project's root directory.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * Change Date: 2025-01-01
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * On the date above, in accordance with the Business Source License, use
+ * of this software will be governed by version 2.0 of the Apache License.
  */
+/****/
 
 #ifndef ZT_CERTIFICATEOFMEMBERSHIP_HPP
 #define ZT_CERTIFICATEOFMEMBERSHIP_HPP
@@ -27,6 +22,7 @@
 #include <algorithm>
 
 #include "Constants.hpp"
+#include "Credential.hpp"
 #include "Buffer.hpp"
 #include "Address.hpp"
 #include "C25519.hpp"
@@ -34,21 +30,13 @@
 #include "Utils.hpp"
 
 /**
- * Default window of time for certificate agreement
- *
- * Right now we use time for 'revision' so this is the maximum time divergence
- * between two certs for them to agree. It comes out to five minutes, which
- * gives a lot of margin for error if the controller hiccups or its clock
- * drifts but causes de-authorized peers to fall off fast enough.
+ * Maximum number of qualifiers allowed in a COM (absolute max: 65535)
  */
-#define ZT_NETWORK_COM_DEFAULT_REVISION_MAX_DELTA (ZT_NETWORK_AUTOCONF_DELAY * 5)
-
-/**
- * Maximum number of qualifiers in a COM
- */
-#define ZT_NETWORK_COM_MAX_QUALIFIERS 16
+#define ZT_NETWORK_COM_MAX_QUALIFIERS 8
 
 namespace ZeroTier {
+
+class RuntimeEnvironment;
 
 /**
  * Certificate of network membership
@@ -76,25 +64,16 @@ namespace ZeroTier {
  * This is a memcpy()'able structure and is safe (in a crash sense) to modify
  * without locks.
  */
-class CertificateOfMembership
+class CertificateOfMembership : public Credential
 {
 public:
-	/**
-	 * Certificate type codes, used in serialization
-	 *
-	 * Only one so far, and only one hopefully there shall be for quite some
-	 * time.
-	 */
-	enum Type
-	{
-		COM_UINT64_ED25519 = 1 // tuples of unsigned 64's signed with Ed25519
-	};
+	static inline Credential::Type credentialType() { return Credential::CREDENTIAL_TYPE_COM; }
 
 	/**
 	 * Reserved qualifier IDs
 	 *
-	 * IDs below 65536 should be considered reserved for future global
-	 * assignment here.
+	 * IDs below 1024 are reserved for use as standard IDs. Others are available
+	 * for user-defined use.
 	 *
 	 * Addition of new required fields requires that code in hasRequiredFields
 	 * be updated as well.
@@ -102,87 +81,38 @@ public:
 	enum ReservedId
 	{
 		/**
-		 * Revision number of certificate
-		 *
-		 * Certificates may differ in revision number by a designated max
-		 * delta. Differences wider than this cause certificates not to agree.
+		 * Timestamp of certificate
 		 */
-		COM_RESERVED_ID_REVISION = 0,
+		COM_RESERVED_ID_TIMESTAMP = 0,
 
 		/**
 		 * Network ID for which certificate was issued
-		 *
-		 * maxDelta here is zero, since this must match.
 		 */
 		COM_RESERVED_ID_NETWORK_ID = 1,
 
 		/**
 		 * ZeroTier address to whom certificate was issued
-		 *
-		 * maxDelta will be 0xffffffffffffffff here since it's permitted to differ
-		 * from peers obviously.
 		 */
 		COM_RESERVED_ID_ISSUED_TO = 2
+
+		// IDs 3-6 reserved for full hash of identity to which this COM was issued.
 	};
 
 	/**
-	 * Create an empty certificate
+	 * Create an empty certificate of membership
 	 */
 	CertificateOfMembership() :
-		_qualifierCount(0)
-	{
-		memset(_signature.data,0,_signature.size());
-	}
-
-	CertificateOfMembership(const CertificateOfMembership &c)
-	{
-		memcpy(this,&c,sizeof(CertificateOfMembership));
-	}
+		_qualifierCount(0) {}
 
 	/**
 	 * Create from required fields common to all networks
 	 *
-	 * @param revision Revision number of certificate
+	 * @param timestamp Timestamp of certificate
 	 * @param timestampMaxDelta Maximum variation between timestamps on this net
 	 * @param nwid Network ID
 	 * @param issuedTo Certificate recipient
 	 */
-	CertificateOfMembership(uint64_t revision,uint64_t revisionMaxDelta,uint64_t nwid,const Address &issuedTo)
-	{
-		_qualifiers[0].id = COM_RESERVED_ID_REVISION;
-		_qualifiers[0].value = revision;
-		_qualifiers[0].maxDelta = revisionMaxDelta;
-		_qualifiers[1].id = COM_RESERVED_ID_NETWORK_ID;
-		_qualifiers[1].value = nwid;
-		_qualifiers[1].maxDelta = 0;
-		_qualifiers[2].id = COM_RESERVED_ID_ISSUED_TO;
-		_qualifiers[2].value = issuedTo.toInt();
-		_qualifiers[2].maxDelta = 0xffffffffffffffffULL;
-		_qualifierCount = 3;
-		memset(_signature.data,0,_signature.size());
-	}
-
-	inline CertificateOfMembership &operator=(const CertificateOfMembership &c)
-	{
-		memcpy(this,&c,sizeof(CertificateOfMembership));
-		return *this;
-	}
-
-#ifdef ZT_SUPPORT_OLD_STYLE_NETCONF
-	/**
-	 * Create from string-serialized data
-	 *
-	 * @param s String-serialized COM
-	 */
-	CertificateOfMembership(const char *s) { fromString(s); }
-
-	/**
-	 * Create from string-serialized data
-	 *
-	 * @param s String-serialized COM
-	 */
-	CertificateOfMembership(const std::string &s) { fromString(s.c_str()); }
-#endif // ZT_SUPPORT_OLD_STYLE_NETCONF
+	CertificateOfMembership(uint64_t timestamp,uint64_t timestampMaxDelta,uint64_t nwid,const Identity &issuedTo);
 
 	/**
 	 * Create from binary-serialized COM in buffer
@@ -199,48 +129,23 @@ public:
 	/**
 	 * @return True if there's something here
 	 */
-	inline operator bool() const throw() { return (_qualifierCount != 0); }
+	inline operator bool() const { return (_qualifierCount != 0); }
 
 	/**
-	 * Check for presence of all required fields common to all networks
-	 *
-	 * @return True if all required fields are present
+	 * @return Credential ID, always 0 for COMs
 	 */
-	inline bool hasRequiredFields() const
-	{
-		if (_qualifierCount < 3)
-			return false;
-		if (_qualifiers[0].id != COM_RESERVED_ID_REVISION)
-			return false;
-		if (_qualifiers[1].id != COM_RESERVED_ID_NETWORK_ID)
-			return false;
-		if (_qualifiers[2].id != COM_RESERVED_ID_ISSUED_TO)
-			return false;
-		return true;
-	}
+	inline uint32_t id() const { return 0; }
 
 	/**
-	 * @return Maximum delta for mandatory revision field or 0 if field missing
+	 * @return Timestamp for this cert and maximum delta for timestamp
 	 */
-	inline uint64_t revisionMaxDelta() const
+	inline int64_t timestamp() const
 	{
 		for(unsigned int i=0;i<_qualifierCount;++i) {
-			if (_qualifiers[i].id == COM_RESERVED_ID_REVISION)
-				return _qualifiers[i].maxDelta;
-		}
-		return 0ULL;
-	}
-
-	/**
-	 * @return Revision number for this cert
-	 */
-	inline uint64_t revision() const
-	{
-		for(unsigned int i=0;i<_qualifierCount;++i) {
-			if (_qualifiers[i].id == COM_RESERVED_ID_REVISION)
+			if (_qualifiers[i].id == COM_RESERVED_ID_TIMESTAMP)
 				return _qualifiers[i].value;
 		}
-		return 0ULL;
+		return 0;
 	}
 
 	/**
@@ -268,49 +173,20 @@ public:
 	}
 
 	/**
-	 * Add or update a qualifier in this certificate
-	 *
-	 * Any signature is invalidated and signedBy is set to null.
-	 *
-	 * @param id Qualifier ID
-	 * @param value Qualifier value
-	 * @param maxDelta Qualifier maximum allowed difference (absolute value of difference)
-	 */
-	void setQualifier(uint64_t id,uint64_t value,uint64_t maxDelta);
-	inline void setQualifier(ReservedId id,uint64_t value,uint64_t maxDelta) { setQualifier((uint64_t)id,value,maxDelta); }
-
-#ifdef ZT_SUPPORT_OLD_STYLE_NETCONF
-	/**
-	 * @return String-serialized representation of this certificate
-	 */
-	std::string toString() const;
-
-	/**
-	 * Set this certificate equal to the hex-serialized string
-	 *
-	 * Invalid strings will result in invalid or undefined certificate
-	 * contents. These will subsequently fail validation and comparison.
-	 * Empty strings will result in an empty certificate.
-	 *
-	 * @param s String to deserialize
-	 */
-	void fromString(const char *s);
-#endif // ZT_SUPPORT_OLD_STYLE_NETCONF
-
-	/**
 	 * Compare two certificates for parameter agreement
 	 *
 	 * This compares this certificate with the other and returns true if all
-	 * paramters in this cert are present in the other and if they agree to
+	 * parameters in this cert are present in the other and if they agree to
 	 * within this cert's max delta value for each given parameter.
 	 *
 	 * Tuples present in other but not in this cert are ignored, but any
 	 * tuples present in this cert but not in other result in 'false'.
 	 *
 	 * @param other Cert to compare with
+	 * @param otherIdentity Identity of other node
 	 * @return True if certs agree and 'other' may be communicated with
 	 */
-	bool agreesWith(const CertificateOfMembership &other) const;
+	bool agreesWith(const CertificateOfMembership &other, const Identity &otherIdentity) const;
 
 	/**
 	 * Sign this certificate
@@ -321,27 +197,28 @@ public:
 	bool sign(const Identity &with);
 
 	/**
-	 * Verify certificate against an identity
+	 * Verify this COM and its signature
 	 *
-	 * @param id Identity to verify against
-	 * @return True if certificate is signed by this identity and verification was successful
+	 * @param RR Runtime environment for looking up peers
+	 * @param tPtr Thread pointer to be handed through to any callbacks called as a result of this call
+	 * @return 0 == OK, 1 == waiting for WHOIS, -1 == BAD signature or credential
 	 */
-	bool verify(const Identity &id) const;
+	int verify(const RuntimeEnvironment *RR,void *tPtr) const;
 
 	/**
 	 * @return True if signed
 	 */
-	inline bool isSigned() const throw() { return (_signedBy); }
+	inline bool isSigned() const { return (_signedBy); }
 
 	/**
 	 * @return Address that signed this certificate or null address if none
 	 */
-	inline const Address &signedBy() const throw() { return _signedBy; }
+	inline const Address &signedBy() const { return _signedBy; }
 
 	template<unsigned int C>
 	inline void serialize(Buffer<C> &b) const
 	{
-		b.append((unsigned char)COM_UINT64_ED25519);
+		b.append((uint8_t)1);
 		b.append((uint16_t)_qualifierCount);
 		for(unsigned int i=0;i<_qualifierCount;++i) {
 			b.append(_qualifiers[i].id);
@@ -350,7 +227,7 @@ public:
 		}
 		_signedBy.appendTo(b);
 		if (_signedBy)
-			b.append(_signature.data,(unsigned int)_signature.size());
+			b.append(_signature.data,ZT_C25519_SIGNATURE_LEN);
 	}
 
 	template<unsigned int C>
@@ -361,15 +238,15 @@ public:
 		_qualifierCount = 0;
 		_signedBy.zero();
 
-		if (b[p++] != COM_UINT64_ED25519)
-			throw std::invalid_argument("invalid type");
+		if (b[p++] != 1)
+			throw ZT_EXCEPTION_INVALID_SERIALIZED_DATA_INVALID_TYPE;
 
 		unsigned int numq = b.template at<uint16_t>(p); p += sizeof(uint16_t);
 		uint64_t lastId = 0;
 		for(unsigned int i=0;i<numq;++i) {
 			const uint64_t qid = b.template at<uint64_t>(p);
 			if (qid < lastId)
-				throw std::invalid_argument("qualifiers not sorted");
+				throw ZT_EXCEPTION_INVALID_SERIALIZED_DATA_BAD_ENCODING;
 			else lastId = qid;
 			if (_qualifierCount < ZT_NETWORK_COM_MAX_QUALIFIERS) {
 				_qualifiers[_qualifierCount].id = qid;
@@ -378,7 +255,7 @@ public:
 				p += 24;
 				++_qualifierCount;
 			} else {
-				throw std::invalid_argument("too many qualifiers");
+				throw ZT_EXCEPTION_INVALID_SERIALIZED_DATA_OVERFLOW;
 			}
 		}
 
@@ -386,15 +263,14 @@ public:
 		p += ZT_ADDRESS_LENGTH;
 
 		if (_signedBy) {
-			memcpy(_signature.data,b.field(p,(unsigned int)_signature.size()),_signature.size());
-			p += (unsigned int)_signature.size();
+			memcpy(_signature.data,b.field(p,ZT_C25519_SIGNATURE_LEN),ZT_C25519_SIGNATURE_LEN);
+			p += ZT_C25519_SIGNATURE_LEN;
 		}
 
 		return (p - startAt);
 	}
 
 	inline bool operator==(const CertificateOfMembership &c) const
-		throw()
 	{
 		if (_signedBy != c._signedBy)
 			return false;
@@ -406,9 +282,9 @@ public:
 			if ((a.id != b.id)||(a.value != b.value)||(a.maxDelta != b.maxDelta))
 				return false;
 		}
-		return (_signature == c._signature);
+		return (memcmp(_signature.data,c._signature.data,ZT_C25519_SIGNATURE_LEN) == 0);
 	}
-	inline bool operator!=(const CertificateOfMembership &c) const throw() { return (!(*this == c)); }
+	inline bool operator!=(const CertificateOfMembership &c) const { return (!(*this == c)); }
 
 private:
 	struct _Qualifier
@@ -417,7 +293,7 @@ private:
 		uint64_t id;
 		uint64_t value;
 		uint64_t maxDelta;
-		inline bool operator<(const _Qualifier &q) const throw() { return (id < q.id); } // sort order
+		inline bool operator<(const _Qualifier &q) const { return (id < q.id); } // sort order
 	};
 
 	Address _signedBy;

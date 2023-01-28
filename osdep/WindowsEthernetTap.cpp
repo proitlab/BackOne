@@ -1,20 +1,15 @@
 /*
- * ZeroTier One - Network Virtualization Everywhere
- * Copyright (C) 2011-2016  ZeroTier, Inc.  https://www.zerotier.com/
+ * Copyright (c)2019 ZeroTier, Inc.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file in the project's root directory.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * Change Date: 2025-01-01
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * On the date above, in accordance with the Business Source License, use
+ * of this software will be governed by version 2.0 of the Apache License.
  */
+/****/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -49,6 +44,9 @@
 #include "OSUtils.hpp"
 
 #include "..\windows\TapDriver6\tap-windows.h"
+#include "WinDNSHelper.hpp"
+
+#include <netcon.h>
 
 // Create a fake unused default route to force detection of network type on networks without gateways
 #define ZT_WINDOWS_CREATE_FAKE_DEFAULT_ROUTE
@@ -456,13 +454,15 @@ WindowsEthernetTap::WindowsEthernetTap(
 	unsigned int metric,
 	uint64_t nwid,
 	const char *friendlyName,
-	void (*handler)(void *,uint64_t,const MAC &,const MAC &,unsigned int,unsigned int,const void *,unsigned int),
+	void (*handler)(void *,void *,uint64_t,const MAC &,const MAC &,unsigned int,unsigned int,const void *,unsigned int),
 	void *arg) :
 	_handler(handler),
 	_arg(arg),
 	_mac(mac),
 	_nwid(nwid),
+	_mtu(mtu),
 	_tap(INVALID_HANDLE_VALUE),
+	_friendlyName(friendlyName),
 	_injectSemaphore(INVALID_HANDLE_VALUE),
 	_pathToHelpers(hp),
 	_run(true),
@@ -473,13 +473,9 @@ WindowsEthernetTap::WindowsEthernetTap(
 	char subkeyClass[1024];
 	char data[1024];
 	char tag[24];
-	std::string mySubkeyName;
-
-	if (mtu > 2800)
-		throw std::runtime_error("MTU too large.");
 
 	// We "tag" registry entries with the network ID to identify persistent devices
-	Utils::snprintf(tag,sizeof(tag),"%.16llx",(unsigned long long)nwid);
+	OSUtils::ztsnprintf(tag,sizeof(tag),"%.16llx",(unsigned long long)nwid);
 
 	Mutex::Lock _l(_systemTapInitLock);
 
@@ -522,7 +518,7 @@ WindowsEthernetTap::WindowsEthernetTap(
 								_netCfgInstanceId = instanceId;
 								_deviceInstanceId = instanceIdPath;
 
-								mySubkeyName = subkeyName;
+								_mySubkeyName = subkeyName;
 								break; // found it!
 							}
 						}
@@ -565,7 +561,7 @@ WindowsEthernetTap::WindowsEthernetTap(
 									if (RegGetValueA(nwAdapters,subkeyName,"DeviceInstanceID",RRF_RT_ANY,&type,(PVOID)data,&dataLen) == ERROR_SUCCESS)
 										_deviceInstanceId.assign(data,dataLen);
 
-									mySubkeyName = subkeyName;
+									_mySubkeyName = subkeyName;
 
 									// Disable DHCP by default on new devices
 									HKEY tcpIpInterfaces;
@@ -596,25 +592,25 @@ WindowsEthernetTap::WindowsEthernetTap(
 
 	if (_netCfgInstanceId.length() > 0) {
 		char tmps[64];
-		unsigned int tmpsl = Utils::snprintf(tmps,sizeof(tmps),"%.2X-%.2X-%.2X-%.2X-%.2X-%.2X",(unsigned int)mac[0],(unsigned int)mac[1],(unsigned int)mac[2],(unsigned int)mac[3],(unsigned int)mac[4],(unsigned int)mac[5]) + 1;
-		RegSetKeyValueA(nwAdapters,mySubkeyName.c_str(),"NetworkAddress",REG_SZ,tmps,tmpsl);
-		RegSetKeyValueA(nwAdapters,mySubkeyName.c_str(),"MAC",REG_SZ,tmps,tmpsl);
-		DWORD tmp = mtu;
-		RegSetKeyValueA(nwAdapters,mySubkeyName.c_str(),"MTU",REG_DWORD,(LPCVOID)&tmp,sizeof(tmp));
+		unsigned int tmpsl = OSUtils::ztsnprintf(tmps,sizeof(tmps),"%.2X-%.2X-%.2X-%.2X-%.2X-%.2X",(unsigned int)mac[0],(unsigned int)mac[1],(unsigned int)mac[2],(unsigned int)mac[3],(unsigned int)mac[4],(unsigned int)mac[5]) + 1;
+		RegSetKeyValueA(nwAdapters,_mySubkeyName.c_str(),"NetworkAddress",REG_SZ,tmps,tmpsl);
+		RegSetKeyValueA(nwAdapters,_mySubkeyName.c_str(),"MAC",REG_SZ,tmps,tmpsl);
+		tmpsl = OSUtils::ztsnprintf(tmps, sizeof(tmps), "%d", mtu);
+		RegSetKeyValueA(nwAdapters,_mySubkeyName.c_str(),"MTU",REG_SZ,tmps,tmpsl);
 
-		tmp = 0;
-		RegSetKeyValueA(nwAdapters,mySubkeyName.c_str(),"*NdisDeviceType",REG_DWORD,(LPCVOID)&tmp,sizeof(tmp));
+		DWORD tmp = 0;
+		RegSetKeyValueA(nwAdapters,_mySubkeyName.c_str(),"*NdisDeviceType",REG_DWORD,(LPCVOID)&tmp,sizeof(tmp));
 		tmp = IF_TYPE_ETHERNET_CSMACD;
-		RegSetKeyValueA(nwAdapters,mySubkeyName.c_str(),"*IfType",REG_DWORD,(LPCVOID)&tmp,sizeof(tmp));
+		RegSetKeyValueA(nwAdapters,_mySubkeyName.c_str(),"*IfType",REG_DWORD,(LPCVOID)&tmp,sizeof(tmp));
 
 		if (creatingNewDevice) {
 			// Vista/2008 does not set this
 			if (newDeviceInstanceId.length() > 0)
-				RegSetKeyValueA(nwAdapters,mySubkeyName.c_str(),"DeviceInstanceID",REG_SZ,newDeviceInstanceId.c_str(),(DWORD)newDeviceInstanceId.length());
+				RegSetKeyValueA(nwAdapters,_mySubkeyName.c_str(),"DeviceInstanceID",REG_SZ,newDeviceInstanceId.c_str(),(DWORD)newDeviceInstanceId.length());
 
 			// Set EnableDHCP to 0 by default on new devices
 			tmp = 0;
-			RegSetKeyValueA(nwAdapters,mySubkeyName.c_str(),"EnableDHCP",REG_DWORD,(LPCVOID)&tmp,sizeof(tmp));
+			RegSetKeyValueA(nwAdapters,_mySubkeyName.c_str(),"EnableDHCP",REG_DWORD,(LPCVOID)&tmp,sizeof(tmp));
 		}
 		RegCloseKey(nwAdapters);
 	} else {
@@ -640,7 +636,7 @@ WindowsEthernetTap::WindowsEthernetTap(
 	if (ConvertInterfaceGuidToLuid(&_deviceGuid,&_deviceLuid) != NO_ERROR)
 		throw std::runtime_error("unable to convert device interface GUID to LUID");
 
-	_initialized = true;
+	//_initialized = true;
 
 	if (friendlyName)
 		setFriendlyName(friendlyName);
@@ -651,6 +647,7 @@ WindowsEthernetTap::WindowsEthernetTap(
 
 WindowsEthernetTap::~WindowsEthernetTap()
 {
+	WinDNSHelper::removeDNS(_nwid);
 	_run = false;
 	ReleaseSemaphore(_injectSemaphore,1,NULL);
 	Thread::join(_thread);
@@ -672,6 +669,7 @@ bool WindowsEthernetTap::addIp(const InetAddress &ip)
 {
 	if (!ip.netmaskBits()) // sanity check... netmask of 0.0.0.0 is WUT?
 		return false;
+
 	Mutex::Lock _l(_assignedIps_m);
 	if (std::find(_assignedIps.begin(),_assignedIps.end(),ip) != _assignedIps.end())
 		return true;
@@ -682,6 +680,9 @@ bool WindowsEthernetTap::addIp(const InetAddress &ip)
 
 bool WindowsEthernetTap::removeIp(const InetAddress &ip)
 {
+    if (ip.isV6())
+        return true;
+
 	{
 		Mutex::Lock _l(_assignedIps_m);
 		std::vector<InetAddress>::iterator aip(std::find(_assignedIps.begin(),_assignedIps.end(),ip));
@@ -713,16 +714,19 @@ bool WindowsEthernetTap::removeIp(const InetAddress &ip)
 							DeleteUnicastIpAddressEntry(&(ipt->Table[i]));
 							FreeMibTable(ipt);
 
-							std::vector<std::string> regIps(_getRegistryIPv4Value("IPAddress"));
-							std::vector<std::string> regSubnetMasks(_getRegistryIPv4Value("SubnetMask"));
-							std::string ipstr(ip.toIpString());
-							for(std::vector<std::string>::iterator rip(regIps.begin()),rm(regSubnetMasks.begin());((rip!=regIps.end())&&(rm!=regSubnetMasks.end()));++rip,++rm) {
-								if (*rip == ipstr) {
-									regIps.erase(rip);
-									regSubnetMasks.erase(rm);
-									_setRegistryIPv4Value("IPAddress",regIps);
-									_setRegistryIPv4Value("SubnetMask",regSubnetMasks);
-									break;
+							if (ip.isV4()) {
+								std::vector<std::string> regIps(_getRegistryIPv4Value("IPAddress"));
+								std::vector<std::string> regSubnetMasks(_getRegistryIPv4Value("SubnetMask"));
+								char ipbuf[64];
+								std::string ipstr(ip.toIpString(ipbuf));
+								for (std::vector<std::string>::iterator rip(regIps.begin()), rm(regSubnetMasks.begin()); ((rip != regIps.end()) && (rm != regSubnetMasks.end())); ++rip, ++rm) {
+									if (*rip == ipstr) {
+										regIps.erase(rip);
+										regSubnetMasks.erase(rm);
+										_setRegistryIPv4Value("IPAddress", regIps);
+										_setRegistryIPv4Value("SubnetMask", regSubnetMasks);
+										break;
+									}
 								}
 							}
 
@@ -739,7 +743,7 @@ bool WindowsEthernetTap::removeIp(const InetAddress &ip)
 
 std::vector<InetAddress> WindowsEthernetTap::ips() const
 {
-	static const InetAddress linkLocalLoopback("fe80::1",64); // what is this and why does Windows assign it?
+	static const InetAddress linkLocalLoopback("fe80::1/64"); // what is this and why does Windows assign it?
 	std::vector<InetAddress> addrs;
 
 	if (!_initialized)
@@ -778,12 +782,13 @@ std::vector<InetAddress> WindowsEthernetTap::ips() const
 
 void WindowsEthernetTap::put(const MAC &from,const MAC &to,unsigned int etherType,const void *data,unsigned int len)
 {
-	if ((!_initialized)||(!_enabled)||(_tap == INVALID_HANDLE_VALUE)||(len > (ZT_IF_MTU)))
+	if ((!_initialized)||(!_enabled)||(_tap == INVALID_HANDLE_VALUE)||(len > _mtu))
 		return;
 
 	Mutex::Lock _l(_injectPending_m);
-	_injectPending.push( std::pair<Array<char,ZT_IF_MTU + 32>,unsigned int>(Array<char,ZT_IF_MTU + 32>(),len + 14) );
-	char *d = _injectPending.back().first.data;
+	_injectPending.emplace();
+	_injectPending.back().len = len + 14;
+	char *const d = _injectPending.back().data;
 	to.copyTo(d,6);
 	from.copyTo(d + 6,6);
 	d[12] = (char)((etherType >> 8) & 0xff);
@@ -805,11 +810,71 @@ void WindowsEthernetTap::setFriendlyName(const char *dn)
 {
 	if (!_initialized)
 		return;
+
 	HKEY ifp;
 	if (RegOpenKeyExA(HKEY_LOCAL_MACHINE,(std::string("SYSTEM\\CurrentControlSet\\Control\\Network\\{4D36E972-E325-11CE-BFC1-08002BE10318}\\") + _netCfgInstanceId).c_str(),0,KEY_READ|KEY_WRITE,&ifp) == ERROR_SUCCESS) {
 		RegSetKeyValueA(ifp,"Connection","Name",REG_SZ,(LPCVOID)dn,(DWORD)(strlen(dn)+1));
 		RegCloseKey(ifp);
 	}
+
+	HRESULT hr = S_OK;
+
+	INetSharingManager *nsm;
+	hr = CoCreateInstance(__uuidof(NetSharingManager), NULL, CLSCTX_ALL, __uuidof(INetSharingManager), (void**)&nsm);
+	if (hr != S_OK)	return;
+
+	bool found = false;
+	INetSharingEveryConnectionCollection *nsecc = nullptr;
+	hr = nsm->get_EnumEveryConnection(&nsecc);
+	if (!nsecc) {
+		fprintf(stderr, "Failed to get NSM connections");
+		return;
+	}
+
+	IEnumVARIANT *ev = nullptr;
+	IUnknown *unk = nullptr;
+	hr = nsecc->get__NewEnum(&unk);
+	if (unk) {
+		hr = unk->QueryInterface(__uuidof(IEnumVARIANT), (void**)&ev);
+		unk->Release();
+	}
+	if (ev) {
+		VARIANT v;
+		VariantInit(&v);
+
+		while ((S_OK == ev->Next(1, &v, NULL)) && found == FALSE) {
+			if (V_VT(&v) == VT_UNKNOWN) {
+				INetConnection *nc = nullptr;
+				V_UNKNOWN(&v)->QueryInterface(__uuidof(INetConnection), (void**)&nc);
+				if (nc) {
+					NETCON_PROPERTIES *ncp = nullptr;
+					nc->GetProperties(&ncp);
+
+					GUID curId = ncp->guidId;
+					if (curId == _deviceGuid) {
+						wchar_t wtext[255];
+						mbstowcs(wtext, dn, strlen(dn)+1);
+						nc->Rename(wtext);
+						found = true;
+					}
+					nc->Release();
+				}
+			}
+			VariantClear(&v);
+		}
+		ev->Release();
+	}
+	nsecc->Release();
+
+	_friendlyName_m.lock();
+	_friendlyName = dn;
+	_friendlyName_m.unlock();
+}
+
+std::string WindowsEthernetTap::friendlyName() const
+{
+	Mutex::Lock l(_friendlyName_m);
+	return _friendlyName;
 }
 
 void WindowsEthernetTap::scanMulticastGroups(std::vector<MulticastGroup> &added,std::vector<MulticastGroup> &removed)
@@ -827,7 +892,7 @@ void WindowsEthernetTap::scanMulticastGroups(std::vector<MulticastGroup> &added,
 	// pretty much anything work... IPv4, IPv6, IPX, oldskool Netbios, who knows...
 	unsigned char mcastbuf[TAP_WIN_IOCTL_GET_MULTICAST_MEMBERSHIPS_OUTPUT_BUF_SIZE];
 	DWORD bytesReturned = 0;
-	if (DeviceIoControl(t,TAP_WIN_IOCTL_GET_MULTICAST_MEMBERSHIPS,(LPVOID)0,0,(LPVOID)mcastbuf,sizeof(mcastbuf),&bytesReturned,NULL)) {
+	if (DeviceIoControl(t,TAP_WIN_IOCTL_GET_MULTICAST_MEMBERSHIPS,(LPVOID)mcastbuf,sizeof(mcastbuf),(LPVOID)mcastbuf,sizeof(mcastbuf),&bytesReturned,NULL)) {
 		if ((bytesReturned > 0)&&(bytesReturned <= TAP_WIN_IOCTL_GET_MULTICAST_MEMBERSHIPS_OUTPUT_BUF_SIZE)) { // sanity check
 			MAC mac;
 			DWORD i = 0;
@@ -861,6 +926,20 @@ void WindowsEthernetTap::scanMulticastGroups(std::vector<MulticastGroup> &added,
 	_multicastGroups.swap(newGroups);
 }
 
+void WindowsEthernetTap::setMtu(unsigned int mtu)
+{
+	if (mtu != _mtu) {
+		_mtu = mtu;
+		HKEY nwAdapters;
+		if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Control\\Class\\{4D36E972-E325-11CE-BFC1-08002BE10318}", 0, KEY_READ | KEY_WRITE, &nwAdapters) == ERROR_SUCCESS) {
+			char tmps[64];
+			unsigned int tmpsl = OSUtils::ztsnprintf(tmps, sizeof(tmps), "%d", mtu);
+			RegSetKeyValueA(nwAdapters, _mySubkeyName.c_str(), "MTU", REG_SZ, tmps, tmpsl);
+			RegCloseKey(nwAdapters);
+		}
+	}
+}
+
 NET_IFINDEX WindowsEthernetTap::interfaceIndex() const
 {
 	NET_IFINDEX idx = -1;
@@ -872,12 +951,18 @@ NET_IFINDEX WindowsEthernetTap::interfaceIndex() const
 void WindowsEthernetTap::threadMain()
 	throw()
 {
-	char tapReadBuf[ZT_IF_MTU + 32];
+	HRESULT hres = CoInitializeEx(0, COINIT_MULTITHREADED);
+	if (FAILED(hres)) {
+		fprintf(stderr, "WinEthernetTap: COM initialization failed");
+		return;
+	}
+
+	char tapReadBuf[ZT_MAX_MTU + 32];
 	char tapPath[128];
 	HANDLE wait4[3];
 	OVERLAPPED tapOvlRead,tapOvlWrite;
 
-	Utils::snprintf(tapPath,sizeof(tapPath),"\\\\.\\Global\\%s.tap",_netCfgInstanceId.c_str());
+	OSUtils::ztsnprintf(tapPath,sizeof(tapPath),"\\\\.\\Global\\%s.tap",_netCfgInstanceId.c_str());
 
 	try {
 		while (_run) {
@@ -1001,9 +1086,18 @@ void WindowsEthernetTap::threadMain()
 			ReadFile(_tap,tapReadBuf,sizeof(tapReadBuf),NULL,&tapOvlRead);
 			bool writeInProgress = false;
 			ULONGLONG timeOfLastBorkCheck = GetTickCount64();
+			_initialized = true;
+			unsigned int oldmtu = _mtu;
+
+			setFriendlyName(_friendlyName.c_str());
+
 			while (_run) {
 				DWORD waitResult = WaitForMultipleObjectsEx(writeInProgress ? 3 : 2,wait4,FALSE,2500,TRUE);
-				if (!_run) break; // will also break outer while(_run)
+				if (!_run) break; // will also break outer while(_run) since _run is false
+
+				// Check for changes in MTU and break to restart tap device to reconfigure in this case
+				if (_mtu != oldmtu)
+					break;
 
 				// Check for issues with adapter and close/reopen if any are detected. This
 				// check fixes a while boatload of Windows adapter 'coma' issues after
@@ -1048,12 +1142,11 @@ void WindowsEthernetTap::threadMain()
 							MAC from(tapReadBuf + 6,6);
 							unsigned int etherType = ((((unsigned int)tapReadBuf[12]) & 0xff) << 8) | (((unsigned int)tapReadBuf[13]) & 0xff);
 							try {
-								// TODO: decode vlans
-								_handler(_arg,_nwid,from,to,etherType,0,tapReadBuf + 14,bytesRead - 14);
+								_handler(_arg,(void *)0,_nwid,from,to,etherType,0,tapReadBuf + 14,bytesRead - 14);
 							} catch ( ... ) {} // handlers should not throw
 						}
 					}
-					ReadFile(_tap,tapReadBuf,ZT_IF_MTU + 32,NULL,&tapOvlRead);
+					ReadFile(_tap,tapReadBuf,ZT_MAX_MTU + 32,NULL,&tapOvlRead);
 				}
 
 				if (writeInProgress) {
@@ -1065,7 +1158,7 @@ void WindowsEthernetTap::threadMain()
 				} else _injectPending_m.lock();
 
 				if (!_injectPending.empty()) {
-					WriteFile(_tap,_injectPending.front().first.data,_injectPending.front().second,NULL,&tapOvlWrite);
+					WriteFile(_tap,_injectPending.front().data,_injectPending.front().len,NULL,&tapOvlWrite);
 					writeInProgress = true;
 				}
 
@@ -1082,6 +1175,7 @@ void WindowsEthernetTap::threadMain()
 			// We will restart and re-open the tap unless _run == false
 		}
 	} catch ( ... ) {} // catch unexpected exceptions -- this should not happen but would prevent program crash or other weird issues since threads should not throw
+	CoUninitialize();
 }
 
 NET_IFINDEX WindowsEthernetTap::_getDeviceIndex()
@@ -1195,16 +1289,24 @@ void WindowsEthernetTap::_syncIps()
 			CreateUnicastIpAddressEntry(&ipr);
 		}
 
-		std::string ipStr(aip->toString());
-		std::vector<std::string> regIps(_getRegistryIPv4Value("IPAddress"));
-		if (std::find(regIps.begin(),regIps.end(),ipStr) == regIps.end()) {
-			std::vector<std::string> regSubnetMasks(_getRegistryIPv4Value("SubnetMask"));
-			regIps.push_back(ipStr);
-			regSubnetMasks.push_back(aip->netmask().toIpString());
-			_setRegistryIPv4Value("IPAddress",regIps);
-			_setRegistryIPv4Value("SubnetMask",regSubnetMasks);
+		if (aip->isV4()) {
+			char ipbuf[64];
+			std::string ipStr(aip->toIpString(ipbuf));
+			std::vector<std::string> regIps(_getRegistryIPv4Value("IPAddress"));
+			if (std::find(regIps.begin(), regIps.end(), ipStr) == regIps.end()) {
+				std::vector<std::string> regSubnetMasks(_getRegistryIPv4Value("SubnetMask"));
+				regIps.push_back(ipStr);
+				regSubnetMasks.push_back(aip->netmask().toIpString(ipbuf));
+				_setRegistryIPv4Value("IPAddress", regIps);
+				_setRegistryIPv4Value("SubnetMask", regSubnetMasks);
+			}
 		}
 	}
+}
+
+void WindowsEthernetTap::setDns(const char* domain, const std::vector<InetAddress>& servers)
+{
+	WinDNSHelper::setDNS(_nwid, domain, servers);
 }
 
 } // namespace ZeroTier
