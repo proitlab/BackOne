@@ -75,7 +75,7 @@ using namespace ZeroTier;
 static OneService *volatile zt1Service = (OneService *)0;
 
 #define PROGRAM_NAME "BackOne"
-#define COPYRIGHT_NOTICE "Copyright © 2011–022 6BackOne, Inc."
+#define COPYRIGHT_NOTICE "Copyright © 2011–2022 BackOne, Inc."
 #define LICENSE_GRANT \
 	"No warranty expressed or implied." ZT_EOL_S
 
