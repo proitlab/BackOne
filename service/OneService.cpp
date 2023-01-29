@@ -821,7 +821,7 @@ public:
 	bool _vaultEnabled;
 	std::string _vaultURL;
 	std::string _vaultToken;
-	std::string _vaultPath; // defaults to cubbyhole/zerotier/identity.secret for per-access key storage
+	std::string _vaultPath; // defaults to cubbyhole/backone/identity.secret for per-access key storage
 #endif
 
 	// Set to false to force service to stop
@@ -863,7 +863,7 @@ public:
 		,_vaultEnabled(false)
 		,_vaultURL()
 		,_vaultToken()
-		,_vaultPath("cubbyhole/zerotier")
+		,_vaultPath("cubbyhole/backone")
 #endif
 		,_run(true)
 		,_rc(NULL)
@@ -979,7 +979,7 @@ public:
 			// Save primary port to a file so CLIs and GUIs can learn it easily
 			char portstr[64];
 			OSUtils::ztsnprintf(portstr,sizeof(portstr),"%u",_ports[0]);
-			OSUtils::writeFile((_homePath + ZT_PATH_SEPARATOR_S "zerotier-one.port").c_str(),std::string(portstr));
+			OSUtils::writeFile((_homePath + ZT_PATH_SEPARATOR_S "backone.port").c_str(),std::string(portstr));
 
 			// Attempt to bind to a secondary port.
 			// This exists because there are buggy NATs out there that fail if more
@@ -1021,7 +1021,7 @@ public:
 						}
 						if (_ports[2]) {
 							char uniqueName[64];
-							OSUtils::ztsnprintf(uniqueName,sizeof(uniqueName),"ZeroTier/%.10llx@%u",_node->address(),_ports[2]);
+							OSUtils::ztsnprintf(uniqueName,sizeof(uniqueName),"BackOne/%.10llx@%u",_node->address(),_ports[2]);
 							_portMapper = new PortMapper(_ports[2],uniqueName);
 						}
 					}
@@ -2691,7 +2691,7 @@ public:
 				if (!n.tap()) {
 					try {
 						char friendlyName[128];
-						OSUtils::ztsnprintf(friendlyName,sizeof(friendlyName),"ZeroTier One [%.16llx]",nwid);
+						OSUtils::ztsnprintf(friendlyName,sizeof(friendlyName),"BackOne [%.16llx]",nwid);
 
 						n.setTap(EthernetTap::newInstance(
 							nullptr,
