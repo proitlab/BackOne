@@ -28,9 +28,9 @@
 #include "../node/InetAddress.hpp"
 
 #ifdef __WINDOWS__
-#include <WinSock2.h>
-#include <Windows.h>
-#include <Shlwapi.h>
+#include <winsock2.h>
+#include <windows.h>
+#include <shlwapi.h>
 #else
 #include <unistd.h>
 #include <errno.h>
@@ -194,20 +194,6 @@ public:
 	 * @return IP addresses in InetAddress sort order or empty vector if not found
 	 */
 	static std::vector<InetAddress> resolve(const char *name);
-
-	/**
-	 * @return Current time in a human-readable format
-	 */
-	static inline std::string humanReadableTimestamp()
-	{
-		time_t rawtime;
-		struct tm * timeinfo;
-		char buffer [80];
-		time (&rawtime);
-		timeinfo = localtime (&rawtime);
-		strftime (buffer,80,"%F %T",timeinfo);
-		return std::string(buffer);
-	}
 
 	/**
 	 * @return Current time in milliseconds since epoch

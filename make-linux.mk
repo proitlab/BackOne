@@ -9,7 +9,7 @@ ifeq ($(origin CXX),default)
         CXX:=$(shell if [ -e /opt/rh/devtoolset-8/root/usr/bin/g++ ]; then echo /opt/rh/devtoolset-8/root/usr/bin/g++; else echo $(CXX); fi)
 endif
 
-INCLUDES?=
+INCLUDES?=-Izeroidc/target
 DEFS?=
 LDLIBS?=
 DESTDIR?=
@@ -18,7 +18,7 @@ include objects.mk
 ONE_OBJS+=osdep/LinuxEthernetTap.o
 ONE_OBJS+=osdep/LinuxNetLink.o
 
-# for central controller builds
+# for central controller buildsk
 TIMESTAMP=$(shell date +"%Y%m%d%H%M")
 
 # Auto-detect miniupnpc and nat-pmp as well and use system libs if present,
@@ -45,15 +45,12 @@ endif
 # Trying to use dynamically linked libhttp-parser causes tons of compatibility problems.
 ONE_OBJS+=ext/http-parser/http_parser.o
 
-ifeq ($(ZT_DEBUG_TRACE),1)
-	DEFS+=-DZT_DEBUG_TRACE
-endif
-ifeq ($(ZT_TRACE),1)
-	DEFS+=-DZT_TRACE
-endif
-
 ifeq ($(ZT_RULES_ENGINE_DEBUGGING),1)
 	override DEFS+=-DZT_RULES_ENGINE_DEBUGGING
+endif
+
+ifeq ($(ZT_DEBUG_TRACE),1)
+	DEFS+=-DZT_DEBUG_TRACE
 endif
 
 # Build with address sanitization library for advanced debugging (clang)
@@ -64,7 +61,7 @@ ifeq ($(ZT_DEBUG),1)
 	override CFLAGS+=-Wall -Wno-deprecated -g -O -pthread $(INCLUDES) $(DEFS)
 	override CXXFLAGS+=-Wall -Wno-deprecated -g -O -std=c++11 -pthread $(INCLUDES) $(DEFS)
 	ZT_TRACE=1
-	STRIP?=echo
+	RUSTFLAGS=
 	# The following line enables optimization for the crypto code, since
 	# C25519 in particular is almost UNUSABLE in -O0 even on a 3ghz box!
 node/Salsa20.o node/SHA512.o node/C25519.o node/Poly1305.o: CXXFLAGS=-Wall -O2 -g -pthread $(INCLUDES) $(DEFS)
@@ -74,8 +71,7 @@ else
 	CXXFLAGS?=-O3 -fstack-protector -fPIE
 	override CXXFLAGS+=-Wall -Wno-deprecated -std=c++11 -pthread $(INCLUDES) -DNDEBUG $(DEFS)
 	LDFLAGS=-pie -Wl,-z,relro,-z,now
-	STRIP?=strip
-	STRIP+=--strip-all
+	RUSTFLAGS=--release
 endif
 
 ifeq ($(ZT_QNAP), 1)
@@ -99,6 +95,10 @@ ifeq ($(ZT_TRACE),1)
 	override DEFS+=-DZT_TRACE
 endif
 
+ifeq ($(ZT_DEBUG),1)
+	override DEFS+=-DZT_DEBUG
+endif
+
 ifeq ($(ZT_USE_TEST_TAP),1)
 	override DEFS+=-DZT_USE_TEST_TAP
 endif
@@ -117,6 +117,7 @@ ifeq ($(CC_MACH),x86_64)
 	ZT_USE_X64_ASM_ED25519=1
 	override CFLAGS+=-msse -msse2
 	override CXXFLAGS+=-msse -msse2
+	ZT_SSO_SUPPORTED=1
 endif
 ifeq ($(CC_MACH),amd64)
 	ZT_ARCHITECTURE=2
@@ -124,6 +125,7 @@ ifeq ($(CC_MACH),amd64)
 	ZT_USE_X64_ASM_ED25519=1
 	override CFLAGS+=-msse -msse2
 	override CXXFLAGS+=-msse -msse2
+	ZT_SSO_SUPPORTED=1
 endif
 ifeq ($(CC_MACH),powerpc64le)
 	ZT_ARCHITECTURE=8
@@ -145,15 +147,19 @@ ifeq ($(CC_MACH),e2k)
 endif
 ifeq ($(CC_MACH),i386)
 	ZT_ARCHITECTURE=1
+	ZT_SSO_SUPPORTED=1
 endif
 ifeq ($(CC_MACH),i486)
 	ZT_ARCHITECTURE=1
+	ZT_SSO_SUPPORTED=1
 endif
 ifeq ($(CC_MACH),i586)
 	ZT_ARCHITECTURE=1
+	ZT_SSO_SUPPORTED=1
 endif
 ifeq ($(CC_MACH),i686)
 	ZT_ARCHITECTURE=1
+	ZT_SSO_SUPPORTED=1
 endif
 ifeq ($(CC_MACH),arm)
 	ZT_ARCHITECTURE=3
@@ -169,6 +175,7 @@ ifeq ($(CC_MACH),armhf)
 	ZT_ARCHITECTURE=3
 	override DEFS+=-DZT_NO_TYPE_PUNNING
 	ZT_USE_ARM32_NEON_ASM_CRYPTO=1
+	ZT_SSO_SUPPORTED=1
 endif
 ifeq ($(CC_MACH),armv6)
 	ZT_ARCHITECTURE=3
@@ -212,10 +219,12 @@ ifeq ($(CC_MACH),armv7ve)
 endif
 ifeq ($(CC_MACH),arm64)
 	ZT_ARCHITECTURE=4
+	ZT_SSO_SUPPORTED=1
 	override DEFS+=-DZT_NO_TYPE_PUNNING -DZT_ARCH_ARM_HAS_NEON -march=armv8-a+crypto -mtune=generic -mstrict-align
 endif
 ifeq ($(CC_MACH),aarch64)
 	ZT_ARCHITECTURE=4
+	ZT_SSO_SUPPORTED=1
 	override DEFS+=-DZT_NO_TYPE_PUNNING -DZT_ARCH_ARM_HAS_NEON -march=armv8-a+crypto -mtune=generic -mstrict-align
 endif
 ifeq ($(CC_MACH),mipsel)
@@ -248,6 +257,24 @@ ERR=$(error FATAL: architecture could not be determined from $(CC) -dumpmachine:
 err: ; $(ERR)
 endif
 
+# Flag for Intel 32-bit processors since some machine images are incorrectly marked as i386
+ifeq ($(ZT_IA32),1)
+	override LDFLAGS+=-m32
+	override CFLAGS+=-m32
+	override CXXFLAGS+=-m32
+	# Prevent the use of X64 crypto
+	ZT_USE_X64_ASM_SALSA=0
+	ZT_USE_X64_ASM_ED25519=0
+endif
+
+ifeq ($(ZT_SSO_SUPPORTED), 1)
+	ifeq ($(ZT_DEBUG),1)
+		LDLIBS+=zeroidc/target/debug/libzeroidc.a -ldl -lssl -lcrypto
+	else
+		LDLIBS+=zeroidc/target/release/libzeroidc.a -ldl -lssl -lcrypto
+	endif
+endif
+
 # Disable software updates by default on Linux since that is normally done with package management
 override DEFS+=-DZT_BUILD_PLATFORM=1 -DZT_BUILD_ARCHITECTURE=$(ZT_ARCHITECTURE) -DZT_SOFTWARE_UPDATE_DEFAULT="\"disable\""
 
@@ -266,7 +293,8 @@ ifeq ($(ZT_OFFICIAL),1)
 endif
 
 ifeq ($(ZT_CONTROLLER),1)
-	override LDLIBS+=-L/usr/pgsql-10/lib/ -lpq ext/hiredis-0.14.1/lib/centos8/libhiredis.a ext/redis-plus-plus-1.1.1/install/centos8/lib/libredis++.a
+	override CXXFLAGS+=-Wall -Wno-deprecated -std=c++17 -pthread $(INCLUDES) -DNDEBUG $(DEFS)
+	override LDLIBS+=-L/usr/pgsql-10/lib/ -lpqxx -lpq ext/hiredis-0.14.1/lib/centos8/libhiredis.a ext/redis-plus-plus-1.1.1/install/centos8/lib/libredis++.a -lssl -lcrypto
 	override DEFS+=-DZT_CONTROLLER_USE_LIBPQ
 	override INCLUDES+=-I/usr/pgsql-10/include -Iext/hiredis-0.14.1/include/ -Iext/redis-plus-plus-1.1.1/install/centos8/include/sw/
 endif
@@ -278,8 +306,8 @@ ifeq ($(ZT_ARCHITECTURE),3)
 		override CXXFLAGS+=-march=armv5t -mfloat-abi=soft -msoft-float -mno-unaligned-access -marm
 		ZT_USE_ARM32_NEON_ASM_CRYPTO=0
 	else
-		override CFLAGS+=-mfloat-abi=hard -mfpu=vfp -mcpu=arm1176jzf-s -marm -mno-unaligned-access
-		override CXXFLAGS+=-mfloat-abi=hard -mfpu=vfp -mcpu=arm1176jzf-s -fexceptions -marm -mno-unaligned-access
+		override CFLAGS+=-mfloat-abi=hard -march=armv6kz -marm -mfpu=vfp -mno-unaligned-access -mtp=cp15 -mcpu=arm1176jzf-s
+		override CXXFLAGS+=-mfloat-abi=hard -march=armv6kz -marm -mfpu=vfp -fexceptions -mno-unaligned-access -mtp=cp15 -mcpu=arm1176jzf-s
 		ZT_USE_ARM32_NEON_ASM_CRYPTO=0
 	endif
 endif
@@ -302,30 +330,30 @@ endif
 all:	one
 
 .PHONY: one
-one: backone backone-idtool backone-cli
+one: zerotier-one zerotier-idtool zerotier-cli
 
-backone:	$(CORE_OBJS) $(ONE_OBJS) one.o
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o backone $(CORE_OBJS) $(ONE_OBJS) one.o $(LDLIBS)
-	$(STRIP) backone
+zerotier-one:	$(CORE_OBJS) $(ONE_OBJS) one.o
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o zerotier-one $(CORE_OBJS) $(ONE_OBJS) one.o $(LDLIBS)
 
-backone-idtool: backone
-	ln -sf backone backone-idtool
+zerotier-idtool: zerotier-one
+	ln -sf zerotier-one zerotier-idtool
 
-backone-cli: backone
-	ln -sf backone backone-cli
+zerotier-cli: zerotier-one
+	ln -sf zerotier-one zerotier-cli
 
-libbackonecore.a:	FORCE
+$(ONE_OBJS): zeroidc
+
+libzerotiercore.a:	FORCE
 	make CFLAGS="-O3 -fstack-protector -fPIC" CXXFLAGS="-O3 -std=c++11 -fstack-protector -fPIC" $(CORE_OBJS)
-	ar rcs libbackonecore.a $(CORE_OBJS)
-	ranlib libbackonecore.a
+	ar rcs libzerotiercore.a $(CORE_OBJS)
+	ranlib libzerotiercore.a
 
-core: libbackonecore.a
+core: libzerotiercore.a
 
 selftest:	$(CORE_OBJS) $(ONE_OBJS) selftest.o
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o backone-selftest selftest.o $(CORE_OBJS) $(ONE_OBJS) $(LDLIBS)
-	$(STRIP) backone-selftest
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o zerotier-selftest selftest.o $(CORE_OBJS) $(ONE_OBJS) $(LDLIBS)
 
-backone-selftest: selftest
+zerotier-selftest: selftest
 
 manpages:	FORCE
 	cd doc ; ./build.sh
@@ -333,73 +361,82 @@ manpages:	FORCE
 doc:	manpages
 
 clean: FORCE
-	rm -rf *.a *.so *.o node/*.o controller/*.o osdep/*.o service/*.o ext/http-parser/*.o ext/miniupnpc/*.o ext/libnatpmp/*.o $(CORE_OBJS) $(ONE_OBJS) backone backone-idtool backone-cli backone-selftest build-* BackOneInstaller-* *.deb *.rpm .depend debian/files debian/backone*.debhelper debian/backone.substvars debian/*.log debian/backone doc/node_modules ext/misc/*.o debian/.debhelper debian/debhelper-build-stamp docker/backone
+	rm -rf *.a *.so *.o node/*.o controller/*.o osdep/*.o service/*.o ext/http-parser/*.o ext/miniupnpc/*.o ext/libnatpmp/*.o $(CORE_OBJS) $(ONE_OBJS) zerotier-one zerotier-idtool zerotier-cli zerotier-selftest build-* ZeroTierOneInstaller-* *.deb *.rpm .depend debian/files debian/zerotier-one*.debhelper debian/zerotier-one.substvars debian/*.log debian/zerotier-one doc/node_modules ext/misc/*.o debian/.debhelper debian/debhelper-build-stamp docker/zerotier-one zeroidc/target
 
 distclean:	clean
 
 realclean:	distclean
 
 official:	FORCE
-	make -j4 ZT_OFFICIAL=1 all
+	make -j`nproc` ZT_OFFICIAL=1 all
 
 docker:	FORCE
-	docker build --no-cache -f ext/installfiles/linux/backone-containerized/Dockerfile -t backone-containerized .
+	docker build --no-cache -f ext/installfiles/linux/zerotier-containerized/Dockerfile -t zerotier-containerized .
 
 central-controller:	FORCE
 	make -j4 ZT_CONTROLLER=1 ZT_USE_X64_ASM_ED25519=1 one
 
 central-controller-docker: FORCE
-	docker build --no-cache -t docker.backone.cloud/backone-central/ztcentral-controller:${TIMESTAMP} -f ext/central-controller-docker/Dockerfile --build-arg git_branch=`git name-rev --name-only HEAD` .
+	docker build --no-cache -t registry.zerotier.com/zerotier-central/ztcentral-controller:${TIMESTAMP} -f ext/central-controller-docker/Dockerfile --build-arg git_branch=`git name-rev --name-only HEAD` .
 
 debug:	FORCE
 	make ZT_DEBUG=1 one
 	make ZT_DEBUG=1 selftest
 
-# Note: keep the symlinks in /var/lib/backone to the binaries since these
+ifeq ($(ZT_SSO_SUPPORTED), 1)
+zeroidc:	FORCE
+#	export PATH=/root/.cargo/bin:$$PATH; cd zeroidc && cargo build -j1 $(RUSTFLAGS)
+	export PATH=/root/.cargo/bin:$$PATH; cd zeroidc && cargo build $(RUSTFLAGS)
+else
+zeroidc:
+endif
+
+# Note: keep the symlinks in /var/lib/zerotier-one to the binaries since these
 # provide backward compatibility with old releases where the binaries actually
 # lived here. Folks got scripts.
 
 install:	FORCE
 	mkdir -p $(DESTDIR)/usr/sbin
-	rm -f $(DESTDIR)/usr/sbin/backone
-	cp -f backone $(DESTDIR)/usr/sbin/backone
-	rm -f $(DESTDIR)/usr/sbin/backone-cli
-	rm -f $(DESTDIR)/usr/sbin/backone-idtool
-	ln -s backone $(DESTDIR)/usr/sbin/backone-cli
-	ln -s backone $(DESTDIR)/usr/sbin/backone-idtool
-	mkdir -p $(DESTDIR)/var/lib/backone
-	rm -f $(DESTDIR)/var/lib/backone/backone
-	rm -f $(DESTDIR)/var/lib/backone/backone-cli
-	rm -f $(DESTDIR)/var/lib/backone/backone-idtool
-	ln -s ../../../usr/sbin/backone $(DESTDIR)/var/lib/backone/backone
-	ln -s ../../../usr/sbin/backone $(DESTDIR)/var/lib/backone/backone-cli
-	ln -s ../../../usr/sbin/backone $(DESTDIR)/var/lib/backone/backone-idtool
+	rm -f $(DESTDIR)/usr/sbin/zerotier-one
+	cp -f zerotier-one $(DESTDIR)/usr/sbin/zerotier-one
+	rm -f $(DESTDIR)/usr/sbin/zerotier-cli
+	rm -f $(DESTDIR)/usr/sbin/zerotier-idtool
+	ln -s zerotier-one $(DESTDIR)/usr/sbin/zerotier-cli
+	ln -s zerotier-one $(DESTDIR)/usr/sbin/zerotier-idtool
+	mkdir -p $(DESTDIR)/var/lib/zerotier-one
+	rm -f $(DESTDIR)/var/lib/zerotier-one/zerotier-one
+	rm -f $(DESTDIR)/var/lib/zerotier-one/zerotier-cli
+	rm -f $(DESTDIR)/var/lib/zerotier-one/zerotier-idtool
+	ln -s ../../../usr/sbin/zerotier-one $(DESTDIR)/var/lib/zerotier-one/zerotier-one
+	ln -s ../../../usr/sbin/zerotier-one $(DESTDIR)/var/lib/zerotier-one/zerotier-cli
+	ln -s ../../../usr/sbin/zerotier-one $(DESTDIR)/var/lib/zerotier-one/zerotier-idtool
 	mkdir -p $(DESTDIR)/usr/share/man/man8
-	rm -f $(DESTDIR)/usr/share/man/man8/backone.8.gz
-	cat doc/backone.8 | gzip -9 >$(DESTDIR)/usr/share/man/man8/backone.8.gz
+	rm -f $(DESTDIR)/usr/share/man/man8/zerotier-one.8.gz
+	cat doc/zerotier-one.8 | gzip -9 >$(DESTDIR)/usr/share/man/man8/zerotier-one.8.gz
 	mkdir -p $(DESTDIR)/usr/share/man/man1
-	rm -f $(DESTDIR)/usr/share/man/man1/backone-idtool.1.gz
-	rm -f $(DESTDIR)/usr/share/man/man1/backone-cli.1.gz
-	cat doc/backone-cli.1 | gzip -9 >$(DESTDIR)/usr/share/man/man1/backone-cli.1.gz
-	cat doc/backone-idtool.1 | gzip -9 >$(DESTDIR)/usr/share/man/man1/backone-idtool.1.gz
+	rm -f $(DESTDIR)/usr/share/man/man1/zerotier-idtool.1.gz
+	rm -f $(DESTDIR)/usr/share/man/man1/zerotier-cli.1.gz
+	cat doc/zerotier-cli.1 | gzip -9 >$(DESTDIR)/usr/share/man/man1/zerotier-cli.1.gz
+	cat doc/zerotier-idtool.1 | gzip -9 >$(DESTDIR)/usr/share/man/man1/zerotier-idtool.1.gz
+	cp ext/installfiles/linux/zerotier-one.te $(DESTDIR)/var/lib/zerotier-one/zerotier-one.te
 
 # Uninstall preserves identity.public and identity.secret since the user might
-# want to save these. These are your BackOne address.
+# want to save these. These are your ZeroTier address.
 
 uninstall:	FORCE
-	rm -f $(DESTDIR)/var/lib/backone/backone
-	rm -f $(DESTDIR)/var/lib/backone/backone-cli
-	rm -f $(DESTDIR)/var/lib/backone/backone-idtool
-	rm -f $(DESTDIR)/usr/sbin/backone-cli
-	rm -f $(DESTDIR)/usr/sbin/backone-idtool
-	rm -f $(DESTDIR)/usr/sbin/backone
-	rm -rf $(DESTDIR)/var/lib/backone/iddb.d
-	rm -rf $(DESTDIR)/var/lib/backone/updates.d
-	rm -rf $(DESTDIR)/var/lib/backone/networks.d
-	rm -f $(DESTDIR)/var/lib/backone/backone.port
-	rm -f $(DESTDIR)/usr/share/man/man8/backone.8.gz
-	rm -f $(DESTDIR)/usr/share/man/man1/backone-idtool.1.gz
-	rm -f $(DESTDIR)/usr/share/man/man1/backone-cli.1.gz
+	rm -f $(DESTDIR)/var/lib/zerotier-one/zerotier-one
+	rm -f $(DESTDIR)/var/lib/zerotier-one/zerotier-cli
+	rm -f $(DESTDIR)/var/lib/zerotier-one/zerotier-idtool
+	rm -f $(DESTDIR)/usr/sbin/zerotier-cli
+	rm -f $(DESTDIR)/usr/sbin/zerotier-idtool
+	rm -f $(DESTDIR)/usr/sbin/zerotier-one
+	rm -rf $(DESTDIR)/var/lib/zerotier-one/iddb.d
+	rm -rf $(DESTDIR)/var/lib/zerotier-one/updates.d
+	rm -rf $(DESTDIR)/var/lib/zerotier-one/networks.d
+	rm -f $(DESTDIR)/var/lib/zerotier-one/zerotier-one.port
+	rm -f $(DESTDIR)/usr/share/man/man8/zerotier-one.8.gz
+	rm -f $(DESTDIR)/usr/share/man/man1/zerotier-idtool.1.gz
+	rm -f $(DESTDIR)/usr/share/man/man1/zerotier-cli.1.gz
 
 # These are just for convenience for building Linux packages
 
@@ -407,10 +444,10 @@ debian:	FORCE
 	debuild --no-lintian -I -i -us -uc -nc -b
 
 debian-clean: FORCE
-	rm -rf debian/files debian/backone*.debhelper debian/backone.substvars debian/*.log debian/backone debian/.debhelper debian/debhelper-build-stamp
+	rm -rf debian/files debian/zerotier-one*.debhelper debian/zerotier-one.substvars debian/*.log debian/zerotier-one debian/.debhelper debian/debhelper-build-stamp
 
 redhat:	FORCE
-	rpmbuild --target `rpm -q bash --qf "%{arch}"` -ba backone.spec
+	rpmbuild --target `rpm -q bash --qf "%{arch}"` -ba zerotier-one.spec
 
 # This installs the packages needed to build ZT locally on CentOS 7 and
 # is here largely for documentation purposes.
@@ -418,5 +455,27 @@ centos-7-setup: FORCE
 	yum install -y gcc gcc-c++ make epel-release git
 	yum install -y centos-release-scl
 	yum install -y devtoolset-8-gcc devtoolset-8-gcc-c++
+
+snap-build-local: FORCE
+	snapcraft
+
+snap-install: FORCE
+	snap install zerotier_`git describe --tags --abbrev=0`_${SNAP_ARCH}.snap --dangerous
+
+snap-uninstall: FORCE
+	snap remove zerotier
+
+snap-build-remote: FORCE
+	snapcraft remote-build --build-on=amd64,arm64,s390x,ppc64el,armhf,i386
+
+snap-upload-beta: FORCE
+	for SNAPFILE in ./*.snap; do\
+		snapcraft upload --release=beta,edge,candidate $${SNAPFILE};\
+	done
+
+snap-upload-stable: FORCE
+	for SNAPFILE in ./*.snap; do\
+		snapcraft upload --release=stable $${SNAPFILE};\
+	done
 
 FORCE:

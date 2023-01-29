@@ -23,9 +23,9 @@
 
 #if defined(_WIN32) || defined(_WIN64)
 
-#include <WinSock2.h>
-#include <WS2tcpip.h>
-#include <Windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
 
 #define ZT_PHY_SOCKFD_TYPE SOCKET
 #define ZT_PHY_SOCKFD_NULL (INVALID_SOCKET)
@@ -145,7 +145,7 @@ private:
 		ZT_PHY_SOCKFD_TYPE sock;
 		void *uptr; // user-settable pointer
 		ZT_PHY_SOCKADDR_STORAGE_TYPE saddr; // remote for TCP_OUT and TCP_IN, local for TCP_LISTEN, RAW, and UDP
-		char ifname[16];
+		char ifname[256 + 4];
 	};
 
 	std::list<PhySocketImpl> _socks;

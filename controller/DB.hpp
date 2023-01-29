@@ -31,11 +31,40 @@
 #include <atomic>
 #include <mutex>
 #include <set>
+#include <map>
 
 #include "../ext/json/json.hpp"
 
+#define ZT_MEMBER_AUTH_TIMEOUT_NOTIFY_BEFORE 25000
+
 namespace ZeroTier
 {
+
+struct AuthInfo
+{
+public:
+	AuthInfo() 
+	: enabled(false)
+	, version(0)
+	, authenticationURL()
+	, authenticationExpiryTime(0)
+	, issuerURL()
+	, centralAuthURL()
+	, ssoNonce()
+	, ssoState()
+	, ssoClientID()
+	{}
+
+	bool enabled;
+	uint64_t version;
+	std::string authenticationURL;
+	uint64_t authenticationExpiryTime;
+	std::string issuerURL;
+	std::string centralAuthURL;
+	std::string ssoNonce;
+	std::string ssoState;
+	std::string ssoClientID;
+};
 
 /**
  * Base class with common infrastructure for all controller DB implementations
@@ -101,11 +130,12 @@ public:
 	}
 
 	virtual bool save(nlohmann::json &record,bool notifyListeners) = 0;
-
 	virtual void eraseNetwork(const uint64_t networkId) = 0;
 	virtual void eraseMember(const uint64_t networkId,const uint64_t memberId) = 0;
-
 	virtual void nodeIsOnline(const uint64_t networkId,const uint64_t memberId,const InetAddress &physicalAddress) = 0;
+
+	virtual AuthInfo getSSOAuthInfo(const nlohmann::json &member, const std::string &redirectURL) { return AuthInfo(); }
+	virtual void networkMemberSSOHasExpired(uint64_t nwid, int64_t ts);
 
 	inline void addListener(DB::ChangeListener *const listener)
 	{
@@ -148,8 +178,8 @@ protected:
 		std::mutex lock;
 	};
 
-	void _memberChanged(nlohmann::json &old,nlohmann::json &memberConfig,bool notifyListeners);
-	void _networkChanged(nlohmann::json &old,nlohmann::json &networkConfig,bool notifyListeners);
+	virtual void _memberChanged(nlohmann::json &old,nlohmann::json &memberConfig,bool notifyListeners);
+	virtual void _networkChanged(nlohmann::json &old,nlohmann::json &networkConfig,bool notifyListeners);
 	void _fillSummaryInfo(const std::shared_ptr<_Network> &nw,NetworkSummaryInfo &info);
 
 	std::vector<DB::ChangeListener *> _changeListeners;

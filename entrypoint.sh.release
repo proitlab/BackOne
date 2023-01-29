@@ -1,30 +1,86 @@
 #!/bin/sh
 
 grepzt() {
-  (find /proc -name exe | xargs -I{} readlink {}) 2>/dev/null | grep -q zerotier-one
+  [ -f /var/lib/zerotier-one/zerotier-one.pid -a -n "$(cat /var/lib/zerotier-one/zerotier-one.pid)" -a -d "/proc/$(cat /var/lib/zerotier-one/zerotier-one.pid)" ]
   return $?
 }
 
+mkztfile() {
+  file=$1
+  mode=$2
+  content=$3
+
+  mkdir -p /var/lib/zerotier-one
+  echo "$content" > "/var/lib/zerotier-one/$file"
+  chmod "$mode" "/var/lib/zerotier-one/$file"
+}
+
+if [ "x$ZEROTIER_API_SECRET" != "x" ]
+then
+  mkztfile authtoken.secret 0600 "$ZEROTIER_API_SECRET"
+fi
+
+if [ "x$ZEROTIER_IDENTITY_PUBLIC" != "x" ]
+then
+  mkztfile identity.public 0644 "$ZEROTIER_IDENTITY_PUBLIC"
+fi
+
+if [ "x$ZEROTIER_IDENTITY_SECRET" != "x" ]
+then
+  mkztfile identity.secret 0600 "$ZEROTIER_IDENTITY_SECRET"
+fi
+
+mkztfile zerotier-one.port 0600 "9993"
+
+killzerotier() {
+  echo "Killing zerotier"
+  kill $(cat /var/lib/zerotier-one/zerotier-one.pid)  
+  exit 0
+}
+
+trap killzerotier INT TERM
+
+echo "Configuring networks to join"
+mkdir -p /var/lib/zerotier-one/networks.d
+
+echo "joining networks: $@"
+for i in "$@"
+do
+  echo "Configuring join for $i"
+  touch "/var/lib/zerotier-one/networks.d/${i}.conf"
+done
+
 echo "starting zerotier"
-setsid /usr/sbin/zerotier-one &
+nohup /usr/sbin/zerotier-one &
 
 while ! grepzt
 do
   echo "zerotier hasn't started, waiting a second"
+
+  if [ -f nohup.out ]
+  then
+    tail -n 10 nohup.out
+  fi
+
   sleep 1
 done
 
-echo "joining networks"
+echo "Writing healthcheck for networks: $@"
 
-for i in "$@"
+cat >/healthcheck.sh <<EOF
+#!/bin/bash
+for i in $@
 do
-  echo "joining $i"
-
-  while ! zerotier-cli join "$i"
-  do 
-    echo "joining $i failed; trying again in 1s"
-    sleep 1
-  done
+  [ "\$(zerotier-cli get \$i status)" = "OK" ] || exit 1
 done
+EOF
 
-sleep infinity
+chmod +x /healthcheck.sh
+
+echo "zerotier-cli info: $(zerotier-cli info)"
+
+echo "Sleeping infinitely"
+while true
+do
+  sleep 1
+done

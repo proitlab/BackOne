@@ -984,7 +984,7 @@ uint64_t Network::handleConfigChunk(void *tPtr,const uint64_t packetId,const Add
 	}
 
 	if (nc) {
-		this->setConfiguration(tPtr,*nc,true);
+		this->setConfiguration(tPtr, *nc, true);
 		delete nc;
 		return configUpdateId;
 	} else {
@@ -1022,6 +1022,7 @@ int Network::setConfiguration(void *tPtr,const NetworkConfig &nconf,bool saveToD
 		}
 
 		_portError = RR->node->configureVirtualNetworkPort(tPtr,_id,&_uPtr,(oldPortInitialized) ? ZT_VIRTUAL_NETWORK_CONFIG_OPERATION_CONFIG_UPDATE : ZT_VIRTUAL_NETWORK_CONFIG_OPERATION_UP,&ctmp);
+		_authenticationURL = nconf.authenticationURL;
 
 		if (saveToDisk) {
 			Dictionary<ZT_NETWORKCONFIG_DICT_CAPACITY> *const d = new Dictionary<ZT_NETWORKCONFIG_DICT_CAPACITY>();
@@ -1114,7 +1115,7 @@ void Network::requestConfiguration(void *tPtr)
 				this->setConfiguration(tPtr,*nconf,false);
 				delete nconf;
 			} else {
-				this->setNotFound();
+				this->setNotFound(tPtr);
 			}
 		} else if ((_id & 0xff) == 0x01) {
 			// ffAAaaaaaaaaaa01 -- where AA is the IPv4 /8 to use and aaaaaaaaaa is the anchor node for multicast gather and replication
@@ -1198,7 +1199,7 @@ void Network::requestConfiguration(void *tPtr)
 		if (RR->localNetworkController) {
 			RR->localNetworkController->request(_id,InetAddress(),0xffffffffffffffffULL,RR->identity,rmd);
 		} else {
-			this->setNotFound();
+			this->setNotFound(tPtr);
 		}
 		return;
 	}
@@ -1379,6 +1380,8 @@ ZT_VirtualNetworkStatus Network::_status() const
 			return ZT_NETWORK_STATUS_NOT_FOUND;
 		case NETCONF_FAILURE_NONE:
 			return ((_config) ? ZT_NETWORK_STATUS_OK : ZT_NETWORK_STATUS_REQUESTING_CONFIGURATION);
+		case NETCONF_FAILURE_AUTHENTICATION_REQUIRED:
+			return ZT_NETWORK_STATUS_AUTHENTICATION_REQUIRED;
 		default:
 			return ZT_NETWORK_STATUS_PORT_ERROR;
 	}
@@ -1429,6 +1432,16 @@ void Network::_externalConfig(ZT_VirtualNetworkConfig *ec) const
 	}
 
 	memcpy(&ec->dns, &_config.dns, sizeof(ZT_VirtualNetworkDNS));
+
+	Utils::scopy(ec->authenticationURL, sizeof(ec->authenticationURL), _authenticationURL.c_str());
+	ec->ssoVersion = _config.ssoVersion;
+	ec->authenticationExpiryTime = _config.authenticationExpiryTime;
+	ec->ssoEnabled = _config.ssoEnabled;
+	Utils::scopy(ec->centralAuthURL, sizeof(ec->centralAuthURL), _config.centralAuthURL);
+	Utils::scopy(ec->issuerURL, sizeof(ec->issuerURL), _config.issuerURL);
+	Utils::scopy(ec->ssoNonce, sizeof(ec->ssoNonce), _config.ssoNonce);
+	Utils::scopy(ec->ssoState, sizeof(ec->ssoState), _config.ssoState);
+	Utils::scopy(ec->ssoClientID, sizeof(ec->ssoClientID), _config.ssoClientID);
 }
 
 void Network::_sendUpdatesToMembers(void *tPtr,const MulticastGroup *const newMulticastGroup)
@@ -1480,9 +1493,9 @@ void Network::_sendUpdatesToMembers(void *tPtr,const MulticastGroup *const newMu
 		Membership *m = (Membership *)0;
 		Hashtable<Address,Membership>::Iterator i(_memberships);
 		while (i.next(a,m)) {
-			Identity aid(RR->topology->getIdentity(tPtr, *a));
-			if (aid) {
-				if ( ( m->multicastLikeGate(now) || (newMulticastGroup) ) && (m->isAllowedOnNetwork(_config, aid)) && (!std::binary_search(alwaysAnnounceTo.begin(),alwaysAnnounceTo.end(),*a)) )
+			const Identity remoteIdentity(RR->topology->getIdentity(tPtr, *a));
+			if (remoteIdentity) {
+				if ( ( m->multicastLikeGate(now) || (newMulticastGroup) ) && (m->isAllowedOnNetwork(_config, remoteIdentity)) && (!std::binary_search(alwaysAnnounceTo.begin(),alwaysAnnounceTo.end(),*a)) )
 					_announceMulticastGroupsTo(tPtr,*a,groups);
 			}
 		}
@@ -1533,6 +1546,27 @@ Membership &Network::_membership(const Address &a)
 {
 	// assumes _lock is locked
 	return _memberships[a];
+}
+
+void Network::setAuthenticationRequired(void *tPtr, const char* issuerURL, const char* centralEndpoint, const char* clientID, const char* nonce, const char* state)
+{
+	Mutex::Lock _l(_lock);
+	_netconfFailure = NETCONF_FAILURE_AUTHENTICATION_REQUIRED;
+	_config.ssoEnabled = true;
+	_config.ssoVersion = 1;
+
+	Utils::scopy(_config.issuerURL, sizeof(_config.issuerURL), issuerURL);
+	Utils::scopy(_config.centralAuthURL, sizeof(_config.centralAuthURL), centralEndpoint);
+	Utils::scopy(_config.ssoClientID, sizeof(_config.ssoClientID), clientID);
+	Utils::scopy(_config.ssoNonce, sizeof(_config.ssoNonce), nonce);
+	Utils::scopy(_config.ssoState, sizeof(_config.ssoState), state);
+	_sendUpdateEvent(tPtr);
+}
+
+void Network::_sendUpdateEvent(void *tPtr) {
+	ZT_VirtualNetworkConfig ctmp;
+	_externalConfig(&ctmp);
+	RR->node->configureVirtualNetworkPort(tPtr, _id, &_uPtr, (_portInitialized) ? ZT_VIRTUAL_NETWORK_CONFIG_OPERATION_CONFIG_UPDATE : ZT_VIRTUAL_NETWORK_CONFIG_OPERATION_UP, &ctmp);
 }
 
 } // namespace ZeroTier

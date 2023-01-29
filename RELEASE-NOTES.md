@@ -1,6 +1,77 @@
 ZeroTier Release Notes
 ======
 
+# 2022-04-11 -- Version 1.8.8
+
+ * Fix a local privilege escalation bug in the Windows installer.
+ * Dependency fix for some Ubuntu versions.
+ * No changes for other platforms. Windows upgrade recommended, everyone else optional.
+
+# 2022-03-30 -- Version 1.8.7
+
+ * Fix for dependency installations in Windows MSI package.
+ * Fix for desktop UI setup when run by a non-super-user.
+ * Bug fix in local OIDC / SSO support for auth0 and other providers.
+ * Other minor fixes for e.g. old Linux distributions.
+
+# 2022-03-04 -- Version 1.8.6
+
+ * Fixed an issue that could cause the UI to be non-responsive if not joined to any networks.
+ * Fix dependency issues in Debian and RedHat packages for some distributions (Fedora, Mint).
+ * Bumped the peer cache serialization version to prevent "coma" issues on upgrade due to changes in path logic behaving badly with old values.
+
+# 2022-02-22 -- Version 1.8.5
+
+ * Plumbing under the hood for endpoint device SSO support.
+ * Fix in LinuxEthernetTap to tap device support on very old (2.6) Linux kernels.
+ * Fix an issue that could cause self-hosted roots ("moons") to fail to assist peers in making direct links. (GitHub issue #1512)
+ * Merge a series of changes by Joseph Henry (of ZeroTier) that should fix some edge cases where ZeroTier would "forget" valid paths.
+ * Minor multipath improvements for automatic path negotiation.
+
+# 2021-11-30 -- Version 1.8.4
+
+ * Fixed an ugly font problem on some older macOS versions.
+ * Fixed a bug that could cause the desktop tray app control panel to stop opening after a while on Windows.
+ * Fixed a possible double "release" in macOS tray app code that crashed on older macOS versions.
+ * Fixed installation on 32-bit Windows 10.
+ * Fixed a build flags issue that could cause ZeroTier to crash on older ARM32 CPUs.
+
+# 2021-11-15 -- Version 1.8.3
+
+ * Remove problematic spinlock, which was only used on x86_64 anyway. Just use pthread always.
+ * Fix fd leak on MacOS that caused non-responsiveness after some time.
+ * Fix Debian install scripts to set /usr/sbin/nologin as shell on service user.
+ * Fix regression that could prevent managed routes from being deleted.
+ * DesktopUI: Remove NSDate:now() call, now works on MacOS 10.13 or newer!
+
+# 2021-11-08 -- Version 1.8.2
+
+ * Fix multicast on linux.
+ * Fix a bug that could cause the tap adapter to have the wrong MAC on Linux.
+ * Update build flags to possibly support MacOS older than 10.14, but more work needs to be done. It may not work yet.
+ * Fix path variable setting on Windows.
+
+# 2021-10-28 -- Version 1.8.1
+
+ * Fix numerous UI issues from 1.8.0 (never fully released).
+ * Remove support for REALLY ancient 1.1.6 or earlier network controllers.
+ * MacOS IPv6 no longer binds to temporary addresses as these can cause interruptions if they expire.
+ * Added additional hardening against address impersonation on networks (also in 1.6.6).
+ * Fix an issue that could cause clobbering of MacOS IP route settings on restart.
+
+ * NOTE: Windows 7 is no longer supported! Windows 7 users will have to use version 1.6.5 or earlier.
+
+# 2021-09-15 -- Version 1.8.0 (preview release only)
+
+ * A *completely* rewritten desktop UI for Mac and Windows!
+ * Implement a workaround for one potential source of a "coma" bug, which can occur if buggy NATs/routers stop allowing the service to communicate on a given port. ZeroTier now reassigns a new secondary port if it's offline for a while unless a secondary port is manually specified in local.conf. Working around crummy buggy routers is an ongoing effort.
+ * Fix for MacOS MTU capping issue on feth devices
+ * Fix for mistakenly using v6 source addresses for v4 routes on some platforms
+ * Stop binding to temporary IPv6 addresses
+ * Set MAC address before bringing up Linux TAP link
+ * Check if DNS servers need to be applied on macOS
+ * Upgrade json.hpp dependency to version 3.10.2
+
 # 2021-09-21 -- Version 1.6.6
 
  * Backport COM hash check mitigation against network member impersonation.

@@ -50,7 +50,7 @@ if [ "$ZT_USE_REDIS" == "true" ]; then
         }
     "
 else
-    REDIS="\"redis\": {}"
+    REDIS="\"redis\": null"
 fi
 
 mkdir -p /var/lib/zerotier-one
@@ -62,19 +62,27 @@ popd
 
 DEFAULT_PORT=9993
 
+APP_NAME="controller-$(cat /var/lib/zerotier-one/identity.public | cut -d ':' -f 1)"
+
 echo "{
     \"settings\": {
-        \"controllerDbPath\": \"postgres:host=${ZT_DB_HOST} port=${ZT_DB_PORT} dbname=${ZT_DB_NAME} user=${ZT_DB_USER} password=${ZT_DB_PASSWORD} sslmode=prefer sslcert=${DB_CLIENT_CERT} sslkey=${DB_CLIENT_KEY} sslrootcert=${DB_SERVER_CA}\",
+        \"controllerDbPath\": \"postgres:host=${ZT_DB_HOST} port=${ZT_DB_PORT} dbname=${ZT_DB_NAME} user=${ZT_DB_USER} password=${ZT_DB_PASSWORD} application_name=${APP_NAME} sslmode=prefer sslcert=${DB_CLIENT_CERT} sslkey=${DB_CLIENT_KEY} sslrootcert=${DB_SERVER_CA}\",
         \"portMappingEnabled\": true,
         \"softwareUpdate\": \"disable\",
         \"interfacePrefixBlacklist\": [
             \"inot\",
             \"nat64\"
         ],
+        \"ssoRedirectURL\": \"${ZT_SSO_REDIRECT_URL}\",
         ${REDIS}
     }
 }    
 " > /var/lib/zerotier-one/local.conf
+
+until /usr/pgsql-10/bin/pg_isready -h ${ZT_DB_HOST} -p ${ZT_DB_PORT}; do
+	echo "Waiting for PostgreSQL...";
+	sleep 2;
+done
 
 export GLIBCXX_FORCE_NEW=1
 export GLIBCPP_FORCE_NEW=1
