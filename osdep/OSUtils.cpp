@@ -41,11 +41,11 @@
 #include <iphlpapi.h>
 #endif
 
-#include "OSUtils.hpp"
-
 #ifdef __GCC__
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
+
+#include "OSUtils.hpp"
 
 namespace ZeroTier {
 
