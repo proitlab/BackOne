@@ -41,20 +41,19 @@
 #include "Trace.hpp"
 
 /**
- * Default maximum time delta for COMs, tags, and capabilities
- *
- * The current value is two hours, providing ample time for a controller to
- * experience fail-over, etc.
+ * Default time delta for COMs, tags, and capabilities
  */
-#define ZT_NETWORKCONFIG_DEFAULT_CREDENTIAL_TIME_MAX_MAX_DELTA 7200000ULL
+#define ZT_NETWORKCONFIG_DEFAULT_CREDENTIAL_TIME_DFL_MAX_DELTA ((int64_t)(1000 * 60 * 30))
 
 /**
- * Default minimum credential TTL and maxDelta for COM timestamps
- *
- * This is just slightly over three minutes and provides three retries for
- * all currently online members to refresh.
+ * Maximum time delta for COMs, tags, and capabilities
  */
-#define ZT_NETWORKCONFIG_DEFAULT_CREDENTIAL_TIME_MIN_MAX_DELTA 185000ULL
+#define ZT_NETWORKCONFIG_DEFAULT_CREDENTIAL_TIME_MAX_MAX_DELTA ((int64_t)(1000 * 60 * 60 * 2))
+
+/**
+ * Minimum credential TTL and maxDelta for COM timestamps
+ */
+#define ZT_NETWORKCONFIG_DEFAULT_CREDENTIAL_TIME_MIN_MAX_DELTA ((int64_t)(1000 * 60 * 5))
 
 /**
  * Flag: enable broadcast
@@ -178,7 +177,7 @@ namespace ZeroTier {
 #define ZT_NETWORKCONFIG_DICT_KEY_CERTIFICATES_OF_OWNERSHIP "COO"
 // dns (binary blobs)
 #define ZT_NETWORKCONFIG_DICT_KEY_DNS "DNS"
-// sso enabld
+// sso enabled
 #define ZT_NETWORKCONFIG_DICT_KEY_SSO_ENABLED "ssoe"
 // so version
 #define ZT_NETWORKCONFIG_DICT_KEY_SSO_VERSION "ssov"
@@ -196,12 +195,14 @@ namespace ZeroTier {
 #define ZT_NETWORKCONFIG_DICT_KEY_STATE "ssos"
 // client ID
 #define ZT_NETWORKCONFIG_DICT_KEY_CLIENT_ID "ssocid"
+// SSO Provider
+#define ZT_NETWORKCONFIG_DICT_KEY_SSO_PROVIDER "ssop"
 
 // AuthInfo fields -- used by ncSendError for sso
 
 // AuthInfo Version
 #define ZT_AUTHINFO_DICT_KEY_VERSION "aV"
-// authenticaiton URL
+// authentication URL
 #define ZT_AUTHINFO_DICT_KEY_AUTHENTICATION_URL "aU"
 // issuer URL
 #define ZT_AUTHINFO_DICT_KEY_ISSUER_URL "iU"
@@ -213,6 +214,8 @@ namespace ZeroTier {
 #define ZT_AUTHINFO_DICT_KEY_STATE "aS"
 // Client ID
 #define ZT_AUTHINFO_DICT_KEY_CLIENT_ID "aCID"
+// SSO Provider
+#define ZT_AUTHINFO_DICT_KEY_SSO_PROVIDER "aSSOp"
 
 // Legacy fields -- these are obsoleted but are included when older clients query
 
@@ -290,6 +293,7 @@ public:
 		memset(ssoNonce, 0, sizeof(ssoNonce));
 		memset(ssoState, 0, sizeof(ssoState));
 		memset(ssoClientID, 0, sizeof(ssoClientID));
+		strncpy(ssoProvider, "default", sizeof(ssoProvider));
 	}
 
 	/**
@@ -660,7 +664,7 @@ public:
 	bool ssoEnabled;
 
 	/**
-	 * SSO verison
+	 * SSO version
 	 */
 	uint64_t ssoVersion;
 
@@ -700,6 +704,15 @@ public:
 	 * oidc client id
 	 */
 	char ssoClientID[256];
+
+	/**
+	 * oidc provider
+	 *
+	 * because certain providers require specific scopes to be requested
+	 * and others to be not requested in order to make everything work
+	 * correctly
+	 **/
+	char ssoProvider[64];
 };
 
 } // namespace ZeroTier

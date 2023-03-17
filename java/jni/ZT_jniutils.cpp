@@ -43,7 +43,7 @@ jobject createResultObject(JNIEnv *env, ZT_ResultCode code)
     resultClass = lookup.findClass("com/zerotier/sdk/ResultCode");
     if(resultClass == NULL)
     {
-        LOGE("Couldnt find ResultCode class");
+        LOGE("Couldn't find ResultCode class");
         return NULL; // exception thrown
     }
 
@@ -296,7 +296,7 @@ jobject newInetAddress(JNIEnv *env, const sockaddr_storage &addr)
         inetAddressClass, "getByAddress", "([B)Ljava/net/InetAddress;");
     if(env->ExceptionCheck() || inetAddress_getByAddress == NULL)
     {
-        LOGE("Erorr finding getByAddress() static method");
+        LOGE("Error finding getByAddress() static method");
         return NULL;
     }
 
@@ -1032,4 +1032,3 @@ jobject newVirtualNetworkDNS(JNIEnv *env, const ZT_VirtualNetworkDNS &dns)
 #ifdef __cplusplus
 }
 #endif
-

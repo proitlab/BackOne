@@ -1,6 +1,6 @@
 # This requires GNU make, which is typically "gmake" on BSD systems
 
-INCLUDES=
+INCLUDES=-isystem ext
 DEFS=
 LIBS=
 
@@ -133,7 +133,7 @@ endif
 
 # Fail if system architecture could not be determined
 ifeq ($(ZT_ARCHITECTURE),999)
-ERR=$(error FATAL: architecture could not be determined from $(CC) -dumpmachine: $CC_MACH)
+ERR=$(error FATAL: architecture could not be determined from $(CC) -dumpmachine: $(CC_MACH))
 .PHONY: err
 err: ; $(ERR)
 endif
@@ -152,7 +152,7 @@ endif
 
 override DEFS+=-DZT_BUILD_PLATFORM=$(ZT_BUILD_PLATFORM) -DZT_BUILD_ARCHITECTURE=$(ZT_ARCHITECTURE) -DZT_SOFTWARE_UPDATE_DEFAULT="\"disable\""
 
-CXXFLAGS+=$(CFLAGS) -std=c++11 #-D_GLIBCXX_USE_C99 -D_GLIBCXX_USE_C99_MATH -D_GLIBCXX_USE_C99_MATH_TR1
+CXXFLAGS+=$(CFLAGS) -std=c++17 #-D_GLIBCXX_USE_C99 -D_GLIBCXX_USE_C99_MATH -D_GLIBCXX_USE_C99_MATH_TR1
 
 all:	one
 

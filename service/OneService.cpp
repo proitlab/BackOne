@@ -53,7 +53,7 @@
 #include "OneService.hpp"
 #include "SoftwareUpdater.hpp"
 
-#if OIDC_SUPPORTED
+#if ZT_SSO_ENABLED
 #include <zeroidc.h>
 #endif
 
@@ -78,6 +78,7 @@
 #include "../osdep/MacDNSHelper.hpp"
 #elif defined(__WINDOWS__)
 #include "../osdep/WinDNSHelper.hpp"
+#include "../osdep/WinFWHelper.hpp"
 #endif
 
 #ifdef ZT_USE_SYSTEM_HTTP_PARSER
@@ -92,7 +93,8 @@ extern "C" {
 }
 #endif
 
-#include "../ext/json/json.hpp"
+#include <nlohmann/json.hpp>
+#include <inja/inja.hpp>
 
 using json = nlohmann::json;
 
@@ -150,43 +152,49 @@ size_t curlResponseWrite(void *ptr, size_t size, size_t nmemb, std::string *data
 
 namespace ZeroTier {
 
-const char *ssoResponseTemplate = "<html>\
-<head>\
-<style type=\"text/css\">\
-html,body {\
-	background: #eeeeee;\
-	margin: 0;\
-	padding: 0;\
-	font-family: \"Helvetica\";\
-	font-weight: bold;\
-	font-size: 12pt;\
-	height: 100%;\
-	width: 100%;\
-}\
-div.icon {\
-	background: #ffb354;\
-	color: #000000;\
-	font-size: 120pt;\
-	border-radius: 2.5rem;\
-	display: inline-block;\
-	width: 1.3em;\
-	height: 1.3em;\
-	padding: 0;\
-	margin: 15;\
-	line-height: 1.4em;\
-	vertical-align: middle;\
-	text-align: center;\
-}\
-</style>\
-</head>\
-<body>\
-<br><br><br><br><br><br>\
-<center>\
-<div class=\"icon\">&#x23c1;</div>\
-<div class=\"text\">%s</div>\
-</center>\
-</body>\
-</html>";
+std::string ssoResponseTemplate = R"""(
+<!doctype html>
+<html class="no-js" lang="">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="x-ua-compatible" content="ie=edge">
+        <title>Network SSO Login {{ networkId }}</title>
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style type="text/css">
+         html,body {
+             background: #eeeeee;
+             margin: 0;
+             padding: 0;
+             font-family: "System Sans Serif";
+             font-weight: normal;
+             font-size: 12pt;
+             height: 100%;
+             width: 100%;
+         }
+
+         .container {
+             position: absolute;
+             left: 50%;
+             top: 50%;
+             -webkit-transform: translate(-50%, -50%);
+             transform: translate(-50%, -50%);
+         }
+         .iconwrapper {
+             margin: 10px 10px 10px 10px;
+         }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="iconwrapper">
+                <svg id="Layer_1" width="225px" height="225px" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 225 225"><defs><style>.cls-1{fill:#fdb25d;}.cls-2{fill:none;stroke:#000;stroke-miterlimit:10;stroke-width:6.99px;}</style></defs><rect class="cls-1" width="225" height="225" rx="35.74"/><line class="cls-2" x1="25.65" y1="32.64" x2="199.35" y2="32.64"/><line class="cls-2" x1="112.5" y1="201.02" x2="112.5" y2="32.64"/><circle class="cls-2" cx="112.5" cy="115.22" r="56.54"/></svg>
+            </div>
+            <div class="text">{{ messageText }}</div>
+        </div>
+    </body>
+</html>
+)""";
 
 // Configured networks
 class NetworkState
@@ -195,7 +203,7 @@ public:
 	NetworkState() 
 		: _webPort(9993)
 		, _tap((EthernetTap *)0)
-#if OIDC_SUPPORTED
+#if ZT_SSO_ENABLED
 		, _idc(nullptr)
 #endif
 	{
@@ -212,7 +220,7 @@ public:
 		this->_managedRoutes.clear();
 		this->_tap.reset();
 
-#if OIDC_SUPPORTED
+#if ZT_SSO_ENABLED
 		if (_idc) {
 			zeroidc::zeroidc_stop(_idc);
 			zeroidc::zeroidc_delete(_idc);
@@ -286,31 +294,22 @@ public:
 	}
 
 	void setConfig(const ZT_VirtualNetworkConfig *nwc) {
-		char nwbuf[17] = {};
-		const char* nwid = Utils::hex(nwc->nwid, nwbuf);
-		// fprintf(stderr, "NetworkState::setConfig(%s)\n", nwid);
-
 		memcpy(&_config, nwc, sizeof(ZT_VirtualNetworkConfig));
-		// fprintf(stderr, "ssoEnabled: %s, ssoVersion: %d\n", 
-		// 	_config.ssoEnabled ? "true" : "false", _config.ssoVersion);
 
 		if (_config.ssoEnabled && _config.ssoVersion == 1) {
-			//  fprintf(stderr, "ssoEnabled for %s\n", nwid);
-#if OIDC_SUPPORTED
+#if ZT_SSO_ENABLED
 			if (_idc == nullptr)
 			{
 				assert(_config.issuerURL != nullptr);
 				assert(_config.ssoClientID != nullptr);
 				assert(_config.centralAuthURL != nullptr);
+				assert(_config.ssoProvider != nullptr);
 
-				// fprintf(stderr, "Issuer URL: %s\n", _config.issuerURL);
-				// fprintf(stderr, "Client ID: %s\n", _config.ssoClientID);
-				// fprintf(stderr, "Central Auth URL: %s\n", _config.centralAuthURL);
-				
 				_idc = zeroidc::zeroidc_new(
 					_config.issuerURL,
 					_config.ssoClientID,
 					_config.centralAuthURL,
+					_config.ssoProvider,
 					_webPort
 				);
 
@@ -318,8 +317,6 @@ public:
 					fprintf(stderr, "idc is null\n");
 					return;
 				}
-
-				// fprintf(stderr, "idc created (%s, %s, %s)\n", _config.issuerURL, _config.ssoClientID, _config.centralAuthURL);
 			}
 
 			zeroidc::zeroidc_set_nonce_and_csrf(
@@ -328,12 +325,12 @@ public:
 				_config.ssoNonce
 			);
 
-			const char* url = zeroidc::zeroidc_get_auth_url(_idc);
+			char* url = zeroidc::zeroidc_get_auth_url(_idc);
 			memcpy(_config.authenticationURL, url, strlen(url));
 			_config.authenticationURL[strlen(url)] = 0;
+			zeroidc::free_cstr(url);
 
 			if (zeroidc::zeroidc_is_running(_idc) && nwc->status == ZT_NETWORK_STATUS_AUTHENTICATION_REQUIRED) {
-				// TODO: kick the refresh thread
 				zeroidc::zeroidc_kick_refresh_thread(_idc);
 			}
 #endif
@@ -353,7 +350,7 @@ public:
 	}
 
 	const char* getAuthURL() {
-#if OIDC_SUPPORTED
+#if ZT_SSO_ENABLED
 		if (_idc != nullptr) {
 			return zeroidc::zeroidc_get_auth_url(_idc);
 		}
@@ -362,31 +359,31 @@ public:
 		return "";
 	}
 
-	const char* doTokenExchange(const char *code) {
-#if OIDC_SUPPORTED
+	char* doTokenExchange(const char *code) {
+		char *ret = nullptr;
+#if ZT_SSO_ENABLED
 		if (_idc == nullptr) {
 			fprintf(stderr, "ainfo or idc null\n");
-			return "";
+			return ret;
 		}
 
-		const char *ret = zeroidc::zeroidc_token_exchange(_idc, code);
+		ret = zeroidc::zeroidc_token_exchange(_idc, code);
 		zeroidc::zeroidc_set_nonce_and_csrf(
 			_idc,
 			_config.ssoState,
 			_config.ssoNonce
 		);
 
-		const char* url = zeroidc::zeroidc_get_auth_url(_idc);
+		char* url = zeroidc::zeroidc_get_auth_url(_idc);
 		memcpy(_config.authenticationURL, url, strlen(url));
 		_config.authenticationURL[strlen(url)] = 0;
-		return ret;
-#else
-		return "";
+		zeroidc::free_cstr(url);
 #endif
+		return ret;
 	}
 
 	uint64_t getExpiryTime() {
-#if OIDC_SUPPORTED
+#if ZT_SSO_ENABLED
 		if (_idc == nullptr) {
 			fprintf(stderr, "idc is null\n");
 			return 0;
@@ -404,7 +401,7 @@ private:
 	std::vector<InetAddress> _managedIps;
 	std::map< InetAddress, SharedPtr<ManagedRoute> > _managedRoutes;
 	OneService::NetworkSettings _settings;
-#if OIDC_SUPPORTED
+#if ZT_SSO_ENABLED
 	zeroidc::ZeroIDC *_idc;
 #endif
 };
@@ -526,7 +523,7 @@ static void _networkToJson(nlohmann::json &nj,NetworkState &ns)
 	}
 }
 
-static void _peerToJson(nlohmann::json &pj,const ZT_Peer *peer)
+static void _peerToJson(nlohmann::json &pj,const ZT_Peer *peer, SharedPtr<Bond> &bond, bool isTunneled)
 {
 	char tmp[256];
 
@@ -547,11 +544,16 @@ static void _peerToJson(nlohmann::json &pj,const ZT_Peer *peer)
 	pj["latency"] = peer->latency;
 	pj["role"] = prole;
 	pj["isBonded"] = peer->isBonded;
-	if (peer->isBonded) {
-		pj["bondingPolicy"] = peer->bondingPolicy;
-		pj["isHealthy"] = peer->isHealthy;
+	pj["tunneled"] = isTunneled;
+	if (bond && peer->isBonded) {
+		pj["bondingPolicyCode"] = peer->bondingPolicy;
+		pj["bondingPolicyStr"] = Bond::getPolicyStrByCode(peer->bondingPolicy);
 		pj["numAliveLinks"] = peer->numAliveLinks;
 		pj["numTotalLinks"] = peer->numTotalLinks;
+		pj["failoverInterval"] = bond->getFailoverInterval();
+		pj["downDelay"] = bond->getDownDelay();
+		pj["upDelay"] = bond->getUpDelay();
+		pj["packetsPerLink"] = bond->getPacketsPerLink();
 	}
 
 	nlohmann::json pa = nlohmann::json::array();
@@ -566,57 +568,24 @@ static void _peerToJson(nlohmann::json &pj,const ZT_Peer *peer)
 		j["active"] = (bool)(peer->paths[i].expired == 0);
 		j["expired"] = (bool)(peer->paths[i].expired != 0);
 		j["preferred"] = (bool)(peer->paths[i].preferred != 0);
+		j["localSocket"] = peer->paths[i].localSocket;
+		if (bond && peer->isBonded) {
+			uint64_t now = OSUtils::now();
+			j["ifname"] = std::string(peer->paths[i].ifname);
+			j["latencyMean"] = peer->paths[i].latencyMean;
+			j["latencyVariance"] = peer->paths[i].latencyVariance;
+			j["packetLossRatio"] = peer->paths[i].packetLossRatio;
+			j["packetErrorRatio"] = peer->paths[i].packetErrorRatio;
+			j["lastInAge"] = (now - lastReceive);
+			j["lastOutAge"] = (now - lastSend);
+			j["bonded"] = peer->paths[i].bonded;
+			j["eligible"] = peer->paths[i].eligible;
+			j["givenLinkSpeed"] = peer->paths[i].linkSpeed;
+			j["relativeQuality"] = peer->paths[i].relativeQuality;
+		}
 		pa.push_back(j);
 	}
 	pj["paths"] = pa;
-}
-
-static void _bondToJson(nlohmann::json &pj, SharedPtr<Bond> &bond)
-{
-	uint64_t now = OSUtils::now();
-
-	int bondingPolicy = bond->policy();
-	pj["bondingPolicy"] = Bond::getPolicyStrByCode(bondingPolicy);
-	if (bondingPolicy == ZT_BOND_POLICY_NONE) {
-		return;
-	}
-
-	pj["isHealthy"] = bond->isHealthy();
-	pj["numAliveLinks"] = bond->getNumAliveLinks();
-	pj["numTotalLinks"] = bond->getNumTotalLinks();
-	pj["failoverInterval"] = bond->getFailoverInterval();
-	pj["downDelay"] = bond->getDownDelay();
-	pj["upDelay"] = bond->getUpDelay();
-	if (bondingPolicy == ZT_BOND_POLICY_BALANCE_RR) {
-		pj["packetsPerLink"] = bond->getPacketsPerLink();
-	}
-	if (bondingPolicy == ZT_BOND_POLICY_ACTIVE_BACKUP) {
-		pj["linkSelectMethod"] = bond->getLinkSelectMethod();
-	}
-
-	nlohmann::json pa = nlohmann::json::array();
-	std::vector< SharedPtr<Path> > paths = bond->paths(now);
-
-	for(unsigned int i=0;i<paths.size();++i) {
-		char pathStr[128];
-		paths[i]->address().toString(pathStr);
-
-		nlohmann::json j;
-		j["ifname"] = bond->getLink(paths[i])->ifname();
-		j["path"] = pathStr;
-		/*
-		j["alive"] = paths[i]->alive(now,true);
-		j["bonded"] = paths[i]->bonded();
-		j["latencyMean"] = paths[i]->latencyMean();
-		j["latencyVariance"] = paths[i]->latencyVariance();
-		j["packetLossRatio"] = paths[i]->packetLossRatio();
-		j["packetErrorRatio"] = paths[i]->packetErrorRatio();
-		j["givenLinkSpeed"] = 1000;
-		j["allocation"] = paths[i]->allocation();
-		*/
-		pa.push_back(j);
-	}
-	pj["links"] = pa;
 }
 
 static void _moonToJson(nlohmann::json &mj,const World &world)
@@ -748,6 +717,7 @@ public:
 	PhySocket *_localControlSocket6;
 	bool _updateAutoApply;
 	bool _allowTcpFallbackRelay;
+	bool _forceTcpRelay;
 	bool _allowSecondaryPort;
 
 	unsigned int _primaryPort;
@@ -786,6 +756,7 @@ public:
 	// Time we last received a packet from a global address
 	uint64_t _lastDirectReceiveFromGlobal;
 #ifdef ZT_TCP_FALLBACK_RELAY
+	InetAddress _fallbackRelayAddress;
 	uint64_t _lastSendToGlobalV4;
 #endif
 
@@ -821,7 +792,7 @@ public:
 	bool _vaultEnabled;
 	std::string _vaultURL;
 	std::string _vaultToken;
-	std::string _vaultPath; // defaults to cubbyhole/backone/identity.secret for per-access key storage
+	std::string _vaultPath; // defaults to cubbyhole/zerotier/identity.secret for per-access key storage
 #endif
 
 	// Set to false to force service to stop
@@ -845,10 +816,12 @@ public:
 		,_localControlSocket4((PhySocket *)0)
 		,_localControlSocket6((PhySocket *)0)
 		,_updateAutoApply(false)
+		,_forceTcpRelay(false)
 		,_primaryPort(port)
 		,_udpPortPickerCounter(0)
 		,_lastDirectReceiveFromGlobal(0)
 #ifdef ZT_TCP_FALLBACK_RELAY
+		, _fallbackRelayAddress(ZT_TCP_FALLBACK_RELAY)
 		,_lastSendToGlobalV4(0)
 #endif
 		,_lastRestart(0)
@@ -863,7 +836,7 @@ public:
 		,_vaultEnabled(false)
 		,_vaultURL()
 		,_vaultToken()
-		,_vaultPath("cubbyhole/backone")
+		,_vaultPath("cubbyhole/zerotier")
 #endif
 		,_run(true)
 		,_rc(NULL)
@@ -880,6 +853,9 @@ public:
 
 	virtual ~OneServiceImpl()
 	{
+#ifdef __WINDOWS__ 
+		WinFWHelper::removeICMPRules();
+#endif
 		_binder.closeAll(_phy);
 		_phy.close(_localControlSocket4);
 		_phy.close(_localControlSocket6);
@@ -887,6 +863,8 @@ public:
 #if ZT_VAULT_SUPPORT
 		curl_global_cleanup();
 #endif
+
+
 
 #ifdef ZT_USE_MINIUPNPC
 		delete _portMapper;
@@ -931,6 +909,7 @@ public:
 				cb.pathLookupFunction = SnodePathLookupFunction;
 				_node = new Node(this,(void *)0,&cb,OSUtils::now());
 			}
+
 
 			// local.conf
 			readLocalSettings();
@@ -979,7 +958,7 @@ public:
 			// Save primary port to a file so CLIs and GUIs can learn it easily
 			char portstr[64];
 			OSUtils::ztsnprintf(portstr,sizeof(portstr),"%u",_ports[0]);
-			OSUtils::writeFile((_homePath + ZT_PATH_SEPARATOR_S "backone.port").c_str(),std::string(portstr));
+			OSUtils::writeFile((_homePath + ZT_PATH_SEPARATOR_S "zerotier-one.port").c_str(),std::string(portstr));
 
 			// Attempt to bind to a secondary port.
 			// This exists because there are buggy NATs out there that fail if more
@@ -1004,27 +983,16 @@ public:
 				// If we're running uPnP/NAT-PMP, bind a *third* port for that. We can't
 				// use the other two ports for that because some NATs do really funky
 				// stuff with ports that are explicitly mapped that breaks things.
-				if (_ports[1]) {
-					if (_tertiaryPort) {
-						_ports[2] = _tertiaryPort;
-					} else {
-						_ports[2] = 20000 + (_ports[0] % 40000);
-						for(int i=0;;++i) {
-							if (i > 1000) {
-								_ports[2] = 0;
-								break;
-							} else if (++_ports[2] >= 65536) {
-								_ports[2] = 20000;
-							}
-							if (_trialBind(_ports[2]))
-								break;
-						}
-						if (_ports[2]) {
-							char uniqueName[64];
-							OSUtils::ztsnprintf(uniqueName,sizeof(uniqueName),"BackOne/%.10llx@%u",_node->address(),_ports[2]);
-							_portMapper = new PortMapper(_ports[2],uniqueName);
-						}
-					}
+				if (_tertiaryPort) {
+					_ports[2] = _tertiaryPort;
+				} else {
+					_ports[2] = _getRandomPort();
+				}
+
+				if (_ports[2]) {
+					char uniqueName[64];
+					OSUtils::ztsnprintf(uniqueName,sizeof(uniqueName),"ZeroTier/%.10llx@%u",_node->address(),_ports[2]);
+					_portMapper = new PortMapper(_ports[2],uniqueName);
 				}
 			}
 #endif
@@ -1130,7 +1098,10 @@ public:
 						if (_ports[i])
 							p[pc++] = _ports[i];
 					}
-					_binder.refresh(_phy,p,pc,explicitBind,*this);
+					if (!_forceTcpRelay) {
+						// Only bother binding UDP ports if we aren't forcing TCP-relay mode
+						_binder.refresh(_phy,p,pc,explicitBind,*this);
+					}
 					{
 						Mutex::Lock _l(_nets_m);
 						for(std::map<uint64_t,NetworkState>::iterator n(_nets.begin());n!=_nets.end();++n) {
@@ -1148,8 +1119,9 @@ public:
 				}
 
 				// Close TCP fallback tunnel if we have direct UDP
-				if ((_tcpFallbackTunnel)&&((now - _lastDirectReceiveFromGlobal) < (ZT_TCP_FALLBACK_AFTER / 2)))
+				if (!_forceTcpRelay && (_tcpFallbackTunnel) && ((now - _lastDirectReceiveFromGlobal) < (ZT_TCP_FALLBACK_AFTER / 2))) {
 					_phy.close(_tcpFallbackTunnel->sock);
+				}
 
 				// Sync multicast group memberships
 				if ((now - lastTapMulticastGroupCheck) >= ZT_TAP_CHECK_MULTICAST_INTERVAL) {
@@ -1445,7 +1417,7 @@ public:
 
 		/* Note: this is kind of restricted in what it'll take. It does not support
 		 * URL encoding, and /'s in URL args will screw it up. But the only URL args
-		 * it really uses in ?jsonp=funcionName, and otherwise it just takes simple
+		 * it really uses in ?jsonp=functionName, and otherwise it just takes simple
 		 * paths to simply-named resources. */
 		if (!ps.empty()) {
 			std::size_t qpos = ps[ps.size() - 1].find('?');
@@ -1514,23 +1486,27 @@ public:
 				if (ps[0] == "bond") {
 					if (_node->bondController()->inUse()) {
 						if (ps.size() == 3) {
-							//fprintf(stderr, "ps[0]=%s\nps[1]=%s\nps[2]=%s\n", ps[0].c_str(), ps[1].c_str(), ps[2].c_str());
 							if (ps[2].length() == 10) {
 								// check if hex string
-								const uint64_t id = Utils::hexStrToU64(ps[2].c_str());
-								if (ps[1] == "show") {
-									SharedPtr<Bond> bond = _node->bondController()->getBondByPeerId(id);
-									if (bond) {
-										_bondToJson(res,bond);
-										scode = 200;
-									} else {
-										fprintf(stderr, "unable to find bond to peer %llx\n", (unsigned long long)id);
-										scode = 400;
+
+								ZT_PeerList *pl = _node->peers();
+								if (pl) {
+									uint64_t wantp = Utils::hexStrToU64(ps[2].c_str());
+									for(unsigned long i=0;i<pl->peerCount;++i) {
+										if (pl->peers[i].address == wantp) {
+											if (ps[1] == "show") {
+												SharedPtr<Bond> bond = _node->bondController()->getBondByPeerId(wantp);
+												if (bond) {
+													_peerToJson(res,&(pl->peers[i]),bond,(_tcpFallbackTunnel != (TcpConnection *)0));
+													scode = 200;
+												} else {
+													scode = 400;
+												}
+											}
+										}
 									}
 								}
-								if (ps[1] == "flows") {
-									fprintf(stderr, "displaying flows\n");
-								}
+								_node->freeQueryResult((void *)pl);
 							}
 						}
 					} else {
@@ -1563,10 +1539,11 @@ public:
 					}
 					json &settings = res["config"]["settings"];
 					settings["allowTcpFallbackRelay"] = OSUtils::jsonBool(settings["allowTcpFallbackRelay"],_allowTcpFallbackRelay);
+					settings["forceTcpRelay"] = OSUtils::jsonBool(settings["forceTcpRelay"],_forceTcpRelay);
 					settings["primaryPort"] = OSUtils::jsonInt(settings["primaryPort"],(uint64_t)_primaryPort) & 0xffff;
 					settings["secondaryPort"] = OSUtils::jsonInt(settings["secondaryPort"],(uint64_t)_secondaryPort) & 0xffff;
 					settings["tertiaryPort"] = OSUtils::jsonInt(settings["tertiaryPort"],(uint64_t)_tertiaryPort) & 0xffff;
-					// Enumerate all external listening address/port pairs
+					// Enumerate all local address/port pairs that this node is listening on
 					std::vector<InetAddress> boundAddrs(_binder.allBoundLocalInterfaceAddresses());
 					auto boundAddrArray = json::array();
 					for (int i = 0; i < boundAddrs.size(); i++) {
@@ -1575,6 +1552,15 @@ public:
 						boundAddrArray.push_back(ipBuf);
 					}
 					settings["listeningOn"] = boundAddrArray;
+					// Enumerate all external address/port pairs that are reported for this node
+					std::vector<InetAddress> surfaceAddrs = _node->SurfaceAddresses();
+					auto surfaceAddrArray = json::array();
+					for (int i = 0; i < surfaceAddrs.size(); i++) {
+						char ipBuf[64] = { 0 };
+						surfaceAddrs[i].toString(ipBuf);
+						surfaceAddrArray.push_back(ipBuf);
+					}
+					settings["surfaceAddresses"] = surfaceAddrArray;
 
 #ifdef ZT_USE_MINIUPNPC
 					settings["portMappingEnabled"] = OSUtils::jsonBool(settings["portMappingEnabled"],true);
@@ -1653,36 +1639,12 @@ public:
 							res = nlohmann::json::array();
 							for(unsigned long i=0;i<pl->peerCount;++i) {
 								nlohmann::json pj;
-								_peerToJson(pj,&(pl->peers[i]));
-								res.push_back(pj);
-							}
-
-							scode = 200;
-						} else if (ps.size() == 2) {
-							// Return a single peer by ID or 404 if not found
-
-							uint64_t wantp = Utils::hexStrToU64(ps[1].c_str());
-							for(unsigned long i=0;i<pl->peerCount;++i) {
-								if (pl->peers[i].address == wantp) {
-									_peerToJson(res,&(pl->peers[i]));
-									scode = 200;
-									break;
+								SharedPtr<Bond> bond = SharedPtr<Bond>();
+								if (pl->peers[i].isBonded) {
+									const uint64_t id = pl->peers[i].address;
+									bond = _node->bondController()->getBondByPeerId(id);
 								}
-							}
-
-						} else scode = 404;
-						_node->freeQueryResult((void *)pl);
-					} else scode = 500;
-				} else if (ps[0] == "bonds") {
-					ZT_PeerList *pl = _node->peers();
-					if (pl) {
-						if (ps.size() == 1) {
-							// Return [array] of all peers
-
-							res = nlohmann::json::array();
-							for(unsigned long i=0;i<pl->peerCount;++i) {
-								nlohmann::json pj;
-								_peerToJson(pj,&(pl->peers[i]));
+								_peerToJson(pj,&(pl->peers[i]),bond,(_tcpFallbackTunnel != (TcpConnection *)0));
 								res.push_back(pj);
 							}
 
@@ -1693,7 +1655,11 @@ public:
 							uint64_t wantp = Utils::hexStrToU64(ps[1].c_str());
 							for(unsigned long i=0;i<pl->peerCount;++i) {
 								if (pl->peers[i].address == wantp) {
-									_peerToJson(res,&(pl->peers[i]));
+									SharedPtr<Bond> bond = SharedPtr<Bond>();
+									if (pl->peers[i].isBonded) {
+										bond = _node->bondController()->getBondByPeerId(wantp);
+									}
+									_peerToJson(res,&(pl->peers[i]),bond,(_tcpFallbackTunnel != (TcpConnection *)0));
 									scode = 200;
 									break;
 								}
@@ -1707,36 +1673,73 @@ public:
 						scode = _controller->handleControlPlaneHttpGET(std::vector<std::string>(ps.begin()+1,ps.end()),urlArgs,headers,body,responseBody,responseContentType);
 					} else scode = 404;
 				}
-#if OIDC_SUPPORTED
+#if ZT_SSO_ENABLED
 			} else if (ps[0] == "sso") {
-				char resBuf[4096] = {0};
-				const char *error = zeroidc::zeroidc_get_url_param_value("error", path.c_str());
+				std::string htmlTemplatePath = _homePath + ZT_PATH_SEPARATOR + "sso-auth.template.html";
+				std::string htmlTemplate;
+				if (!OSUtils::readFile(htmlTemplatePath.c_str(), htmlTemplate)) {
+					htmlTemplate = ssoResponseTemplate;
+				}
+
+				responseContentType = "text/html";
+				json outData;
+
+				char *error = zeroidc::zeroidc_get_url_param_value("error", path.c_str());
 				if (error != nullptr) {
-					const char *desc = zeroidc::zeroidc_get_url_param_value("error_description", path.c_str());
+					char *desc = zeroidc::zeroidc_get_url_param_value("error_description", path.c_str());
 					scode = 500;
-					char errBuff[256] = {0};
-					sprintf(errBuff, "ERROR %s: %s", error, desc);
-					sprintf(resBuf, ssoResponseTemplate, errBuff);
-					responseBody = std::string(resBuf);
-					responseContentType = "text/html";
+
+					json data;
+					outData["isError"] = true;
+					outData["messageText"] = (std::string("ERROR ") + error + std::string(": ") + desc);
+					responseBody = inja::render(htmlTemplate, outData);
+
+					zeroidc::free_cstr(desc);
+					zeroidc::free_cstr(error);
+
 					return scode;
 				} 
 
 				// SSO redirect handling
-				const char* state = zeroidc::zeroidc_get_url_param_value("state", path.c_str());
-				const char* nwid = zeroidc::zeroidc_network_id_from_state(state);
-				
+				char* state = zeroidc::zeroidc_get_url_param_value("state", path.c_str());
+				char* nwid = zeroidc::zeroidc_network_id_from_state(state);
+
+				outData["networkId"] = std::string(nwid);
+
 				const uint64_t id = Utils::hexStrToU64(nwid);
+				
+				zeroidc::free_cstr(nwid);
+				zeroidc::free_cstr(state);
+
 				Mutex::Lock l(_nets_m);
 				if (_nets.find(id) != _nets.end()) {
 					NetworkState& ns = _nets[id];
-					const char* code = zeroidc::zeroidc_get_url_param_value("code", path.c_str());
-					ns.doTokenExchange(code);
-					scode = 200;
-					sprintf(resBuf, ssoResponseTemplate, "Authentication Successful. You may now access the network.");
-					responseBody = std::string(resBuf);
+					char* code = zeroidc::zeroidc_get_url_param_value("code", path.c_str());
+					char *ret = ns.doTokenExchange(code);
+					json ssoResult = json::parse(ret);
+					if (ssoResult.is_object()) {
+						if (ssoResult.contains("errorMessage")) {
+							outData["isError"] = true;
+							outData["messageText"] = ssoResult["errorMessage"];
+							responseBody = inja::render(htmlTemplate, outData);
+							scode = 500;
+						} else {
+							scode = 200;
+							outData["isError"] = false;
+							outData["messageText"] = "Authentication Successful. You may now access the network.";
+							responseBody = inja::render(htmlTemplate, outData);
+						}
+					} else {
+						// not an object? We got a problem
+						outData["isError"] = true;
+						outData["messageText"] = "ERROR: Unkown SSO response. Please contact your administrator.";
+						responseBody = inja::render(htmlTemplate, outData);
+						scode= 500;
+					}
 
-					responseContentType = "text/html";
+					zeroidc::free_cstr(code);
+					zeroidc::free_cstr(ret);
+
 					return scode;
 				} else {
 					scode = 404;
@@ -1750,11 +1753,11 @@ public:
 				if (ps[0] == "bond") {
 					if (_node->bondController()->inUse()) {
 						if (ps.size() == 3) {
-							//fprintf(stderr, "ps[0]=%s\nps[1]=%s\nps[2]=%s\n", ps[0].c_str(), ps[1].c_str(), ps[2].c_str());
 							if (ps[2].length() == 10) {
 								// check if hex string
 								const uint64_t id = Utils::hexStrToU64(ps[2].c_str());
 								if (ps[1] == "rotate") {
+									exit(0);
 									SharedPtr<Bond> bond = _node->bondController()->getBondByPeerId(id);
 									if (bond) {
 										scode = bond->abForciblyRotateLink() ? 200 : 400;
@@ -1762,9 +1765,6 @@ public:
 										fprintf(stderr, "unable to find bond to peer %llx\n", (unsigned long long)id);
 										scode = 400;
 									}
-								}
-								if (ps[1] == "enable") {
-									fprintf(stderr, "enabling bond\n");
 								}
 							}
 						}
@@ -1884,8 +1884,7 @@ public:
 						scode = _controller->handleControlPlaneHttpPOST(std::vector<std::string>(ps.begin()+1,ps.end()),urlArgs,headers,body,responseBody,responseContentType);
 					else scode = 404;
 				}
-			}
-			else {
+			} else {
 				scode = 401; // isAuth == false
 			}
 		} else if (httpMethod == HTTP_DELETE) {
@@ -2021,6 +2020,7 @@ public:
 		json &settings = lc["settings"];
 
 		if (!_node->bondController()->inUse()) {
+			_node->bondController()->setBinder(&_binder);
 			// defaultBondingPolicy
 			std::string defaultBondingPolicyStr(OSUtils::jsonString(settings["defaultBondingPolicy"],""));
 			int defaultBondingPolicy = _node->bondController()->getPolicyCodeByStr(defaultBondingPolicyStr);
@@ -2048,32 +2048,24 @@ public:
 				}
 				// New bond, used as a copy template for new instances
 				SharedPtr<Bond> newTemplateBond = new Bond(NULL, basePolicyStr, customPolicyStr, SharedPtr<Peer>());
-				// Acceptable ranges
 				newTemplateBond->setPolicy(basePolicyCode);
-				newTemplateBond->setMaxAcceptableLatency(OSUtils::jsonInt(customPolicy["maxAcceptableLatency"],-1));
-				newTemplateBond->setMaxAcceptableMeanLatency(OSUtils::jsonInt(customPolicy["maxAcceptableMeanLatency"],-1));
-				newTemplateBond->setMaxAcceptablePacketDelayVariance(OSUtils::jsonInt(customPolicy["maxAcceptablePacketDelayVariance"],-1));
-				newTemplateBond->setMaxAcceptablePacketLossRatio((float)OSUtils::jsonDouble(customPolicy["maxAcceptablePacketLossRatio"],-1));
-				newTemplateBond->setMaxAcceptablePacketErrorRatio((float)OSUtils::jsonDouble(customPolicy["maxAcceptablePacketErrorRatio"],-1));
-				newTemplateBond->setMinAcceptableAllocation((float)OSUtils::jsonDouble(customPolicy["minAcceptableAllocation"],0));
-				// Quality weights
-				json &qualityWeights = customPolicy["qualityWeights"];
-				if (qualityWeights.size() == ZT_QOS_WEIGHT_SIZE) { // TODO: Generalize this
-					float weights[ZT_QOS_WEIGHT_SIZE];
-					weights[ZT_QOS_LAT_IDX] = (float)OSUtils::jsonDouble(qualityWeights["lat"],0.0);
-					weights[ZT_QOS_LTM_IDX] = (float)OSUtils::jsonDouble(qualityWeights["ltm"],0.0);
-					weights[ZT_QOS_PDV_IDX] = (float)OSUtils::jsonDouble(qualityWeights["pdv"],0.0);
-					weights[ZT_QOS_PLR_IDX] = (float)OSUtils::jsonDouble(qualityWeights["plr"],0.0);
-					weights[ZT_QOS_PER_IDX] = (float)OSUtils::jsonDouble(qualityWeights["per"],0.0);
-					weights[ZT_QOS_THR_IDX] = (float)OSUtils::jsonDouble(qualityWeights["thr"],0.0);
-					weights[ZT_QOS_THM_IDX] = (float)OSUtils::jsonDouble(qualityWeights["thm"],0.0);
-					weights[ZT_QOS_THV_IDX] = (float)OSUtils::jsonDouble(qualityWeights["thv"],0.0);
-					newTemplateBond->setUserQualityWeights(weights,ZT_QOS_WEIGHT_SIZE);
+				// Custom link quality spec
+				json &linkQualitySpec = customPolicy["linkQuality"];
+				if (linkQualitySpec.size() == ZT_QOS_PARAMETER_SIZE) {
+					float weights[ZT_QOS_PARAMETER_SIZE] = {};
+					weights[ZT_QOS_LAT_MAX_IDX] = (float)OSUtils::jsonDouble(linkQualitySpec["lat_max"],0.0);
+					weights[ZT_QOS_PDV_MAX_IDX] = (float)OSUtils::jsonDouble(linkQualitySpec["pdv_max"],0.0);
+					weights[ZT_QOS_PLR_MAX_IDX] = (float)OSUtils::jsonDouble(linkQualitySpec["plr_max"],0.0);
+					weights[ZT_QOS_PER_MAX_IDX] = (float)OSUtils::jsonDouble(linkQualitySpec["per_max"],0.0);
+					weights[ZT_QOS_LAT_WEIGHT_IDX] = (float)OSUtils::jsonDouble(linkQualitySpec["lat_weight"],0.0);
+					weights[ZT_QOS_PDV_WEIGHT_IDX] = (float)OSUtils::jsonDouble(linkQualitySpec["pdv_weight"],0.0);
+					weights[ZT_QOS_PLR_WEIGHT_IDX] = (float)OSUtils::jsonDouble(linkQualitySpec["plr_weight"],0.0);
+					weights[ZT_QOS_PER_WEIGHT_IDX] = (float)OSUtils::jsonDouble(linkQualitySpec["per_weight"],0.0);
+					newTemplateBond->setUserLinkQualitySpec(weights,ZT_QOS_PARAMETER_SIZE);
 				}
 				// Bond-specific properties
 				newTemplateBond->setUpDelay(OSUtils::jsonInt(customPolicy["upDelay"],-1));
 				newTemplateBond->setDownDelay(OSUtils::jsonInt(customPolicy["downDelay"],-1));
-				newTemplateBond->setFlowRebalanceStrategy(OSUtils::jsonInt(customPolicy["flowRebalanceStrategy"],(uint64_t)0));
 				newTemplateBond->setFailoverInterval(OSUtils::jsonInt(customPolicy["failoverInterval"],ZT_BOND_FAILOVER_DEFAULT_INTERVAL));
 				newTemplateBond->setPacketsPerLink(OSUtils::jsonInt(customPolicy["packetsPerLink"],-1));
 
@@ -2082,17 +2074,10 @@ public:
 				for (json::iterator linkItr = links.begin(); linkItr != links.end();++linkItr) {
 					std::string linkNameStr(linkItr.key());
 					json &link = linkItr.value();
-
 					bool enabled = OSUtils::jsonInt(link["enabled"],true);
-					uint32_t speed = OSUtils::jsonInt(link["speed"],0);
-					float alloc = (float)OSUtils::jsonDouble(link["alloc"],0);
-
-					if (speed && alloc) {
-						fprintf(stderr, "error: cannot specify both speed (%d) and alloc (%f) for link (%s), pick one, link disabled.\n",
-							speed, alloc, linkNameStr.c_str());
-						enabled = false;
-					}
+					uint32_t capacity = OSUtils::jsonInt(link["capacity"],0);
 					uint8_t ipvPref = OSUtils::jsonInt(link["ipvPref"],0);
+					uint16_t mtu = OSUtils::jsonInt(link["mtu"],0);
 					std::string failoverToStr(OSUtils::jsonString(link["failoverTo"],""));
 					// Mode
 					std::string linkModeStr(OSUtils::jsonString(link["mode"],"spare"));
@@ -2109,7 +2094,7 @@ public:
 						failoverToStr = "";
 						enabled = false;
 					}
-					_node->bondController()->addCustomLink(customPolicyStr, new Link(linkNameStr,ipvPref,speed,enabled,linkMode,failoverToStr,alloc));
+					_node->bondController()->addCustomLink(customPolicyStr, new Link(linkNameStr,ipvPref,mtu,capacity,enabled,linkMode,failoverToStr));
 				}
 				std::string linkSelectMethodStr(OSUtils::jsonString(customPolicy["activeReselect"],"optimize"));
 				if (linkSelectMethodStr == "always") {
@@ -2127,12 +2112,6 @@ public:
 				if (newTemplateBond->getLinkSelectMethod() < 0 || newTemplateBond->getLinkSelectMethod() > 3) {
 					fprintf(stderr, "warning: invalid value (%s) for linkSelectMethod, assuming mode: always\n", linkSelectMethodStr.c_str());
 				}
-				/*
-				newBond->setPolicy(_node->bondController()->getPolicyCodeByStr(basePolicyStr));
-				newBond->setFlowHashing((bool)OSUtils::jsonInt(userSpecifiedBondingPolicies[i]["allowFlowHashing"],(bool)allowFlowHashing));
-				newBond->setBondMonitorInterval((unsigned int)OSUtils::jsonInt(userSpecifiedBondingPolicies[i]["monitorInterval"],(uint64_t)0));
-				newBond->setAllowPathNegotiation((bool)OSUtils::jsonInt(userSpecifiedBondingPolicies[i]["allowPathNegotiation"],(bool)false));
-				*/
 				if (!_node->bondController()->addCustomPolicy(newTemplateBond)) {
 					fprintf(stderr, "error: a custom policy of this name (%s) already exists.\n", customPolicyStr.c_str());
 				}
@@ -2149,7 +2128,12 @@ public:
 		}
 
 		// bondingPolicy cannot be used with allowTcpFallbackRelay
-		_allowTcpFallbackRelay = OSUtils::jsonBool(settings["allowTcpFallbackRelay"],true) && !(_node->bondController()->inUse());
+		_allowTcpFallbackRelay = OSUtils::jsonBool(settings["allowTcpFallbackRelay"],true);
+		_forceTcpRelay = OSUtils::jsonBool(settings["forceTcpRelay"],false);
+
+#ifdef ZT_TCP_FALLBACK_RELAY
+		_fallbackRelayAddress = InetAddress(OSUtils::jsonString(settings["tcpFallbackRelay"], ZT_TCP_FALLBACK_RELAY).c_str());
+#endif
 		_primaryPort = (unsigned int)OSUtils::jsonInt(settings["primaryPort"],(uint64_t)_primaryPort) & 0xffff;
 		_allowSecondaryPort = OSUtils::jsonBool(settings["allowSecondaryPort"],true);
 		_secondaryPort = (unsigned int)OSUtils::jsonInt(settings["secondaryPort"],0);
@@ -2158,6 +2142,7 @@ public:
 			fprintf(stderr,"WARNING: using manually-specified secondary and/or tertiary ports. This can cause NAT issues." ZT_EOL_S);
 		}
 		_portMappingEnabled = OSUtils::jsonBool(settings["portMappingEnabled"],true);
+		_node->setLowBandwidthMode(OSUtils::jsonBool(settings["lowBandwidthMode"],false));
 
 #ifndef ZT_SDK
 		const std::string up(OSUtils::jsonString(settings["softwareUpdate"],ZT_SOFTWARE_UPDATE_DEFAULT));
@@ -2298,23 +2283,27 @@ public:
 				if (std::find(newManagedIps.begin(),newManagedIps.end(),*ip) == newManagedIps.end()) {
 					if (!n.tap()->removeIp(*ip))
 						fprintf(stderr,"ERROR: unable to remove ip address %s" ZT_EOL_S, ip->toString(ipbuf));
+
+					#ifdef __WINDOWS__
+					WinFWHelper::removeICMPRule(*ip, n.config().nwid);
+					#endif
 				}
 			}
-#ifdef __SYNOLOGY__
-			if (!n.tap->addIpSyn(newManagedIps))
-				fprintf(stderr,"ERROR: unable to add ip addresses to ifcfg" ZT_EOL_S);
-#else
+
 			for(std::vector<InetAddress>::iterator ip(newManagedIps.begin());ip!=newManagedIps.end();++ip) {
 				if (std::find(n.managedIps().begin(),n.managedIps().end(),*ip) == n.managedIps().end()) {
 					if (!n.tap()->addIp(*ip))
 						fprintf(stderr,"ERROR: unable to add ip address %s" ZT_EOL_S, ip->toString(ipbuf));
+
+					#ifdef __WINDOWS__
+					WinFWHelper::newICMPRule(*ip, n.config().nwid);
+					#endif
 				}
 			}
 
 #ifdef __APPLE__
 			if (!MacDNSHelper::addIps(n.config().nwid, n.config().mac, n.tap()->deviceName().c_str(), newManagedIps))
 				fprintf(stderr, "ERROR: unable to add v6 addresses to system configuration" ZT_EOL_S);
-#endif
 #endif
 			n.setManagedIps(newManagedIps);
 		}
@@ -2428,6 +2417,9 @@ public:
 
 	inline void phyOnDatagram(PhySocket *sock,void **uptr,const struct sockaddr *localAddr,const struct sockaddr *from,void *data,unsigned long len)
 	{
+		if (_forceTcpRelay) {
+			return;
+		}
 		const uint64_t now = OSUtils::now();
 		if ((len >= 16)&&(reinterpret_cast<const InetAddress *>(from)->ipScope() == InetAddress::IP_SCOPE_GLOBAL))
 			_lastDirectReceiveFromGlobal = now;
@@ -2691,7 +2683,7 @@ public:
 				if (!n.tap()) {
 					try {
 						char friendlyName[128];
-						OSUtils::ztsnprintf(friendlyName,sizeof(friendlyName),"BackOne [%.16llx]",nwid);
+						OSUtils::ztsnprintf(friendlyName,sizeof(friendlyName),"ZeroTier One [%.16llx]",nwid);
 
 						n.setTap(EthernetTap::newInstance(
 							nullptr,
@@ -2789,8 +2781,10 @@ public:
 					n.tap().reset();
 					_nets.erase(nwid);
 #if defined(__WINDOWS__) && !defined(ZT_SDK)
-					if ((op == ZT_VIRTUAL_NETWORK_CONFIG_OPERATION_DESTROY)&&(winInstanceId.length() > 0))
+					if ((op == ZT_VIRTUAL_NETWORK_CONFIG_OPERATION_DESTROY) && (winInstanceId.length() > 0)) {
 						WindowsEthernetTap::deletePersistentTapDevice(winInstanceId.c_str());
+						WinFWHelper::removeICMPRules(nwid);
+					}
 #endif
 					if (op == ZT_VIRTUAL_NETWORK_CONFIG_OPERATION_DESTROY) {
 						char nlcpath[256];
@@ -3134,7 +3128,7 @@ public:
 					// IP address in ZT_TCP_FALLBACK_AFTER milliseconds. If we do start getting
 					// valid direct traffic we'll stop using it and close the socket after a while.
 					const int64_t now = OSUtils::now();
-					if (((now - _lastDirectReceiveFromGlobal) > ZT_TCP_FALLBACK_AFTER)&&((now - _lastRestart) > ZT_TCP_FALLBACK_AFTER)) {
+					if (_forceTcpRelay || (((now - _lastDirectReceiveFromGlobal) > ZT_TCP_FALLBACK_AFTER)&&((now - _lastRestart) > ZT_TCP_FALLBACK_AFTER))) {
 						if (_tcpFallbackTunnel) {
 							bool flushNow = false;
 							{
@@ -3160,8 +3154,8 @@ public:
 								void *tmpptr = (void *)_tcpFallbackTunnel;
 								phyOnTcpWritable(_tcpFallbackTunnel->sock,&tmpptr);
 							}
-						} else if (((now - _lastSendToGlobalV4) < ZT_TCP_FALLBACK_AFTER)&&((now - _lastSendToGlobalV4) > (ZT_PING_CHECK_INVERVAL / 2))) {
-							const InetAddress addr(ZT_TCP_FALLBACK_RELAY);
+						} else if (_forceTcpRelay || (((now - _lastSendToGlobalV4) < ZT_TCP_FALLBACK_AFTER)&&((now - _lastSendToGlobalV4) > (ZT_PING_CHECK_INVERVAL / 2)))) {
+							const InetAddress addr(_fallbackRelayAddress);
 							TcpConnection *tc = new TcpConnection();
 							{
 								Mutex::Lock _l(_tcpConnections_m);
@@ -3181,12 +3175,15 @@ public:
 				}
 			}
 		}
+		if (_forceTcpRelay) {
+			// Shortcut here so that we don't emit any UDP packets
+			return 0;
+		}
 #endif // ZT_TCP_FALLBACK_RELAY
 
 		// Even when relaying we still send via UDP. This way if UDP starts
 		// working we can instantly "fail forward" to it and stop using TCP
 		// proxy fallback, which is slow.
-
 		if ((localSocket != -1)&&(localSocket != 0)&&(_binder.isUdpSocketValid((PhySocket *)((uintptr_t)localSocket)))) {
 			if ((ttl)&&(addr->ss_family == AF_INET)) _phy.setIp4UdpTtl((PhySocket *)((uintptr_t)localSocket),ttl);
 			const bool r = _phy.udpSend((PhySocket *)((uintptr_t)localSocket),(const struct sockaddr *)addr,data,len);

@@ -83,7 +83,18 @@ public:
 		_lastOut(0),
 		_lastIn(0),
 		_lastTrustEstablishedPacketReceived(0),
+		_lastEchoRequestReceived(0),
 		_localSocket(-1),
+		_latencyMean(0.0),
+		_latencyVariance(0.0),
+		_packetLossRatio(0.0),
+		_packetErrorRatio(0.0),
+		_valid(true),
+		_eligible(false),
+		_bonded(false),
+		_mtu(0),
+		_givenLinkSpeed(0),
+		_relativeQuality(0),
 		_latency(0xffff),
 		_addr(),
 		_ipScope(InetAddress::IP_SCOPE_NONE)
@@ -93,7 +104,18 @@ public:
 		_lastOut(0),
 		_lastIn(0),
 		_lastTrustEstablishedPacketReceived(0),
+		_lastEchoRequestReceived(0),
 		_localSocket(localSocket),
+		_latencyMean(0.0),
+		_latencyVariance(0.0),
+		_packetLossRatio(0.0),
+		_packetErrorRatio(0.0),
+		_valid(true),
+		_eligible(false),
+		_bonded(false),
+		_mtu(0),
+		_givenLinkSpeed(0),
+		_relativeQuality(0),
 		_latency(0xffff),
 		_addr(addr),
 		_ipScope(addr.ipScope())
@@ -174,7 +196,7 @@ public:
 	 */
 	inline unsigned int preferenceRank() const
 	{
-		// This causes us to rank paths in order of IP scope rank (see InetAdddress.hpp) but
+		// This causes us to rank paths in order of IP scope rank (see InetAddress.hpp) but
 		// within each IP scope class to prefer IPv6 over IPv4.
 		return ( ((unsigned int)_ipScope << 1) | (unsigned int)(_addr.ss_family == AF_INET6) );
 	}
@@ -266,14 +288,99 @@ public:
 	 */
 	inline int64_t lastTrustEstablishedPacketReceived() const { return _lastTrustEstablishedPacketReceived; }
 
-	void *_bondingMetricPtr;
+	/**
+	 * Rate limit gate for inbound ECHO requests
+	 */
+	inline bool rateGateEchoRequest(const int64_t now)
+	{
+		if ((now - _lastEchoRequestReceived) >= (ZT_PEER_GENERAL_RATE_LIMIT / 6)) {
+			_lastEchoRequestReceived = now;
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * @return Mean latency as reported by the bonding layer
+	 */
+	inline unsigned int latencyMean() const { return _latencyMean; }
+
+	/**
+	 * @return Latency variance as reported by the bonding layer
+	 */
+	inline unsigned int latencyVariance() const { return _latencyVariance; }
+
+	/**
+	 * @return Packet Loss Ratio as reported by the bonding layer
+	 */
+	inline unsigned int packetLossRatio() const { return _packetLossRatio; }
+
+	/**
+	 * @return Packet Error Ratio as reported by the bonding layer
+	 */
+	inline unsigned int packetErrorRatio() const { return _packetErrorRatio; }
+
+	/**
+	 * @return Whether this path is valid as reported by the bonding layer. The bonding layer
+	 * actually checks with Phy to see if the interface is still up
+	 */
+	inline unsigned int valid() const { return _valid; }
+
+	/**
+	 * @return Whether this path is eligible for use in a bond as reported by the bonding layer
+	 */
+	inline unsigned int eligible() const { return _eligible; }
+
+	/**
+	 * @return Whether this path is bonded as reported by the bonding layer
+	 */
+	inline unsigned int bonded() const { return _bonded; }
+
+	/**
+	 * @return Whether the user-specified MTU for this path (determined by MTU for parent link)
+	 */
+	inline unsigned int mtu() const { return _mtu; }
+
+	/**
+	 * @return Given link capacity as reported by the bonding layer
+	 */
+	inline unsigned int givenLinkSpeed() const { return _givenLinkSpeed; }
+
+	/**
+	 * @return Path's quality as reported by the bonding layer
+	 */
+	inline float relativeQuality() const { return _relativeQuality; }
+
+	/**
+	 * @return Physical interface name that this path lives on
+	 */
+	char *ifname() {
+		return _ifname;
+	}
 
 private:
+
+	char _ifname[ZT_MAX_PHYSIFNAME] = { };
 
 	volatile int64_t _lastOut;
 	volatile int64_t _lastIn;
 	volatile int64_t _lastTrustEstablishedPacketReceived;
+
+	int64_t _lastEchoRequestReceived;
+
 	int64_t _localSocket;
+
+	volatile float _latencyMean;
+	volatile float _latencyVariance;
+	volatile float _packetLossRatio;
+	volatile float _packetErrorRatio;
+	volatile bool _valid;
+	volatile bool _eligible;
+	volatile bool _bonded;
+	volatile uint16_t _mtu;
+	volatile uint32_t _givenLinkSpeed;
+	volatile float _relativeQuality;
+
 	volatile unsigned int _latency;
 	InetAddress _addr;
 	InetAddress::IpScope _ipScope; // memoize this since it's a computed value checked often

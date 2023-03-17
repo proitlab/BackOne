@@ -1,6 +1,56 @@
 ZeroTier Release Notes
 ======
 
+# 2023-02-15 -- Version 1.10.3
+
+ * Fix for duplicate paths in client. Could cause connectivity issues. Affects all platforms.
+ * Fix for Ethernet Tap MTU setting, would not properly apply on Linux.
+ * Fix default route bugs (macOS.)
+ * Enable Ping automatically for ZeroTier Adapters (Windows.)
+ * SSO updates and minor bugfixes.
+ * Add low-bandwidth mode.
+ * Add forceTcpRelay mode (optionally enabled.)
+ * Fix bug that prevented setting of custom TCP relay address.
+ * Build script improvements and bug fixes.
+
+# 2022-11-01 -- Version 1.10.2
+
+ * Fix another SSO "stuck client" issue in zeroidc.
+ * Expose root-reported external IP/port information via the local JSON API for better diagnostics.
+ * Multipath: CLI output improvement for inspecting bonds
+ * Multipath: balance-aware mode
+ * Multipath: Custom policies
+ * Multipath: Link quality measurement improvements
+
+Note that releases are coming few and far between because most of our dev effort is going into version 2.
+
+# 2022-06-27 -- Version 1.10.1
+
+ * Fix an issue that could cause SSO clients to get "stuck" on stale auth URLs.
+ * A few other SSO related bug fixes.
+
+# 2022-06-07 -- Version 1.10.0
+
+ * Fix formatting problem in `zerotier-cli` when using SSO networks.
+ * Fix a few other minor bugs in SSO signin to prepare for general availability.
+ * Remove requirement for webview in desktop UI and instead just make everything available via the tray pulldown/menu. Use [libui-ng](https://github.com/libui-ng/libui-ng) for minor prompt dialogs. Saves space and eliminates installation headaches on Windows.
+ * Fix SSO "spam" bug in desktop UI.
+ * Use system default browser for SSO login so all your plugins, MFA devices, password managers, etc. will work as you have them configured.
+ * Minor fix for bonding/multipath.
+
+# 2022-05-10 -- Version 1.8.10
+
+ * Fixed a bug preventing SSO sign-on on Windows.
+
+# 2022-04-25 -- Version 1.8.9
+
+ * Fixed a long-standing and strange bug that was causing sporadic "phantom" packet authentication failures. Not a security problem but could be behind sporadic reports of link failures under some conditions.
+ * Fized a memory leak in SSO/OIDC support.
+ * Fixed SSO/OIDC display error on CLI.
+ * Fixed a bug causing nodes to sometimes fail to push certs to each other (primarily affects SSO/OIDC use cases).
+ * Fixed a deadlock bug on leaving SSO/OIDC managed networks.
+ * Added some new Linux distributions to the build subsystem.
+
 # 2022-04-11 -- Version 1.8.8
 
  * Fix a local privilege escalation bug in the Windows installer.

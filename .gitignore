@@ -6,6 +6,11 @@
 /zerotier
 /nltest
 
+# IDE stuff
+/.idea
+/.nova
+/compile_commands.json
+
 # OS-created garbage files from various platforms
 .DS_Store
 .Apple*
@@ -57,7 +62,6 @@ zt1-src.tar.gz
 *.opensdf
 *.user
 *.cache
-*.obj
 *.tlog
 *.pid
 *.pkg
@@ -102,7 +106,6 @@ windows/ZeroTierOne/Debug/
 *.swp
 *~.nib
 DerivedData/
-build/
 *.pbxuser
 *.mode1v3
 *.mode2v3
@@ -113,7 +116,6 @@ build/
 !default.perspectivev3
 *.xccheckout
 xcuserdata/
-ext/librethinkdbxx/build
 .vscode
 __pycache__
 *~
@@ -122,7 +124,6 @@ attic/world/mkworld
 workspace/
 workspace2/
 zeroidc/target/
-tmp/
 
 #snapcraft specifics
 /parts/
@@ -136,3 +137,4 @@ __pycache__
 *.pyc
 *_source.tar.bz2
 snap/.snapcraft
+tcp-proxy/tcp-proxy
