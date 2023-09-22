@@ -98,7 +98,7 @@
 #include <ifaddrs.h>
 #endif
 
-#define ZT_PID_PATH "backone-one.pid"
+#define ZT_PID_PATH "backone.pid"
 
 using namespace ZeroTier;
 
