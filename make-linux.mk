@@ -118,7 +118,7 @@ ifeq ($(CC_MACH),x86_64)
 	ZT_USE_X64_ASM_ED25519=1
 	override CFLAGS+=-msse -msse2
 	override CXXFLAGS+=-msse -msse2
-	ZT_SSO_SUPPORTED=1
+	ZT_SSO_SUPPORTED=0
 endif
 ifeq ($(CC_MACH),amd64)
 	ZT_ARCHITECTURE=2
@@ -126,7 +126,7 @@ ifeq ($(CC_MACH),amd64)
 	ZT_USE_X64_ASM_ED25519=1
 	override CFLAGS+=-msse -msse2
 	override CXXFLAGS+=-msse -msse2
-	ZT_SSO_SUPPORTED=1
+	ZT_SSO_SUPPORTED=0
 endif
 ifeq ($(CC_MACH),powerpc64le)
 	ZT_ARCHITECTURE=8
@@ -148,19 +148,19 @@ ifeq ($(CC_MACH),e2k)
 endif
 ifeq ($(CC_MACH),i386)
 	ZT_ARCHITECTURE=1
-	ZT_SSO_SUPPORTED=1
+	ZT_SSO_SUPPORTED=0
 endif
 ifeq ($(CC_MACH),i486)
 	ZT_ARCHITECTURE=1
-	ZT_SSO_SUPPORTED=1
+	ZT_SSO_SUPPORTED=0
 endif
 ifeq ($(CC_MACH),i586)
 	ZT_ARCHITECTURE=1
-	ZT_SSO_SUPPORTED=1
+	ZT_SSO_SUPPORTED=0
 endif
 ifeq ($(CC_MACH),i686)
 	ZT_ARCHITECTURE=1
-	ZT_SSO_SUPPORTED=1
+	ZT_SSO_SUPPORTED=0
 endif
 ifeq ($(CC_MACH),arm)
 	ZT_ARCHITECTURE=3
@@ -176,7 +176,7 @@ ifeq ($(CC_MACH),armhf)
 	ZT_ARCHITECTURE=3
 	override DEFS+=-DZT_NO_TYPE_PUNNING
 	ZT_USE_ARM32_NEON_ASM_CRYPTO=1
-	ZT_SSO_SUPPORTED=1
+	ZT_SSO_SUPPORTED=0
 endif
 ifeq ($(CC_MACH),armv6)
 	ZT_ARCHITECTURE=3
@@ -225,12 +225,12 @@ ifeq ($(CC_MACH),armv7ve)
 endif
 ifeq ($(CC_MACH),arm64)
 	ZT_ARCHITECTURE=4
-	ZT_SSO_SUPPORTED=1
+	ZT_SSO_SUPPORTED=0
 	override DEFS+=-DZT_NO_TYPE_PUNNING -DZT_ARCH_ARM_HAS_NEON -march=armv8-a+crypto -mtune=generic -mstrict-align
 endif
 ifeq ($(CC_MACH),aarch64)
 	ZT_ARCHITECTURE=4
-	ZT_SSO_SUPPORTED=1
+	ZT_SSO_SUPPORTED=0
 	override DEFS+=-DZT_NO_TYPE_PUNNING -DZT_ARCH_ARM_HAS_NEON -march=armv8-a+crypto -mtune=generic -mstrict-align
 endif
 ifeq ($(CC_MACH),mipsel)
@@ -405,7 +405,7 @@ debug:	FORCE
 	make ZT_DEBUG=1 selftest
 
 ifeq ($(ZT_SSO_SUPPORTED), 1)
-#ifeq ($(ZT_EMBEDDED),)
+ifeq ($(ZT_EMBEDDED),)
 zeroidc:	FORCE
 #	export PATH=/root/.cargo/bin:$$PATH; cd zeroidc && cargo build -j1 $(RUSTFLAGS)
 	export PATH=/${HOME}/.cargo/bin:$$PATH; cd zeroidc && cargo build $(RUSTFLAGS)
