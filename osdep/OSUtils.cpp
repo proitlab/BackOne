@@ -413,7 +413,7 @@ std::string OSUtils::platformDefaultHomePath()
 
 #ifdef __APPLE__
 	// /Library/... on Apple
-	return std::string("/Library/Application Support/ZeroTier/One");
+	return std::string("/Library/Application Support/BackOne");
 #else
 
 #ifdef __BSD__
