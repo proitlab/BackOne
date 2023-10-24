@@ -28,14 +28,14 @@ if [ "$blobStart" -le "$endMarkerIndex" ]; then
 	exit 2
 fi
 
-rm -f /tmp/ZeroTierOne-update.pkg
-tail -c +$blobStart "$scriptPath" >/tmp/ZeroTierOne-update.pkg
-chmod 0600 /tmp/ZeroTierOne-update.pkg
+rm -f /tmp/BackOne-update.pkg
+tail -c +$blobStart "$scriptPath" >/tmp/BackOne-update.pkg
+chmod 0600 /tmp/BackOne-update.pkg
 
-if [ -s /tmp/ZeroTierOne-update.pkg ]; then
-	rm -f '/Library/Application Support/ZeroTier/One/latest-update.exe' '/Library/Application Support/ZeroTier/One/latest-update.json' /tmp/ZeroTierOne-update.log
-	installer -verbose -pkg /tmp/ZeroTierOne-update.pkg -target / >/tmp/ZeroTierOne-update.log 2>&1
-	rm -f /tmp/ZeroTierOne-update.pkg
+if [ -s /tmp/BackOne-update.pkg ]; then
+	rm -f '/Library/Application Support/BackOne/latest-update.exe' '/Library/Application Support/BackOne/latest-update.json' /tmp/BackOne-update.log
+	installer -verbose -pkg /tmp/BackOne-update.pkg -target / >/tmp/BackOne-update.log 2>&1
+	rm -f /tmp/BackOne-update.pkg
 	exit 0
 else
 	echo '*** Error self-unpacking update!'
