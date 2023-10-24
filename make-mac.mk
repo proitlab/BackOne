@@ -36,10 +36,10 @@ ifeq ($(ZT_OFFICIAL_RELEASE),1)
 	ZT_USE_MINIUPNPC=1
 	CODESIGN=codesign
 	PRODUCTSIGN=productsign
-	CODESIGN_APP_CERT="Developer ID Application: ZeroTier, Inc (8ZD9JUCZ4V)"
-	CODESIGN_INSTALLER_CERT="Developer ID Installer: ZeroTier, Inc (8ZD9JUCZ4V)"
+	CODESIGN_APP_CERT="Developer ID Application: BackOne, Inc (8ZD9JUCZ4V)"
+	CODESIGN_INSTALLER_CERT="Developer ID Installer: BackOne, Inc (8ZD9JUCZ4V)"
 	NOTARIZE=xcrun altool
-	NOTARIZE_USER_ID="adam.ierymenko@gmail.com"
+	NOTARIZE_USER_ID="dedy.sutanto@proit.co.id"
 else
 	DEFS+=-DZT_SOFTWARE_UPDATE_DEFAULT="\"download\""
 endif
@@ -114,13 +114,13 @@ osdep/MacDNSHelper.o: osdep/MacDNSHelper.mm
 	$(CXX) $(CXXFLAGS) -c osdep/MacDNSHelper.mm -o osdep/MacDNSHelper.o 
 
 one:	zeroidc $(CORE_OBJS) $(ONE_OBJS) one.o mac-agent 
-	$(CXX) $(CXXFLAGS) -o zerotier-one $(CORE_OBJS) $(ONE_OBJS) one.o $(LIBS) zeroidc/target/libzeroidc.a
-	# $(STRIP) zerotier-one
-	ln -sf zerotier-one zerotier-idtool
-	ln -sf zerotier-one zerotier-cli
-	$(CODESIGN) -f --options=runtime -s $(CODESIGN_APP_CERT) zerotier-one
+	$(CXX) $(CXXFLAGS) -o backone $(CORE_OBJS) $(ONE_OBJS) one.o $(LIBS) zeroidc/target/libzeroidc.a
+	# $(STRIP) backone
+	ln -sf backone backone-idtool
+	ln -sf backone backone-cli
+	$(CODESIGN) -f --options=runtime -s $(CODESIGN_APP_CERT) backone
 
-zerotier-one: one
+backone: one
 
 zeroidc: zeroidc/target/libzeroidc.a
 
@@ -132,9 +132,9 @@ zeroidc/target/libzeroidc.a:	FORCE
 central-controller:
 	make ARCH_FLAGS="-arch x86_64" ZT_CONTROLLER=1 one
 
-zerotier-idtool: one
+backone-idtool: one
 
-zerotier-cli: one
+backone-cli: one
 
 $(ONE_OBJS): zeroidc
 
@@ -149,10 +149,10 @@ core: libzerotiercore.a
 #	$(STRIP) zerotier
 
 selftest: $(CORE_OBJS) $(ONE_OBJS) selftest.o
-	$(CXX) $(CXXFLAGS) -o zerotier-selftest selftest.o $(CORE_OBJS) $(ONE_OBJS) $(LIBS) zeroidc/target/libzeroidc.a
-	$(STRIP) zerotier-selftest
+	$(CXX) $(CXXFLAGS) -o backone-selftest selftest.o $(CORE_OBJS) $(ONE_OBJS) $(LIBS) zeroidc/target/libzeroidc.a
+	$(STRIP) backone-selftest
 
-zerotier-selftest: selftest
+backone-selftest: selftest
 
 # Make compile_commands.json for clangd editor extensions. Probably works on Linux too.
 compile_commands: FORCE
@@ -160,16 +160,16 @@ compile_commands: FORCE
 
 # Requires Packages: http://s.sudre.free.fr/Software/Packages/about.html
 mac-dist-pkg: FORCE
-	packagesbuild "ext/installfiles/mac/ZeroTier One.pkgproj"
-	rm -f "ZeroTier One Signed.pkg"
-	$(PRODUCTSIGN) --sign $(CODESIGN_INSTALLER_CERT) "ZeroTier One.pkg" "ZeroTier One Signed.pkg"
-	if [ -f "ZeroTier One Signed.pkg" ]; then mv -f "ZeroTier One Signed.pkg" "ZeroTier One.pkg"; fi
+	packagesbuild "ext/installfiles/mac/BackOne.pkgproj"
+	rm -f "BackOne Signed.pkg"
+	$(PRODUCTSIGN) --sign $(CODESIGN_INSTALLER_CERT) "BackOne.pkg" "BackOne Signed.pkg"
+	if [ -f "BackOne Signed.pkg" ]; then mv -f "BackOne Signed.pkg" "BackOne.pkg"; fi
 	rm -f zt1_update_$(ZT_BUILD_PLATFORM)_$(ZT_BUILD_ARCHITECTURE)_*
-	cat ext/installfiles/mac-update/updater.tmpl.sh "ZeroTier One.pkg" >zt1_update_$(ZT_BUILD_PLATFORM)_$(ZT_BUILD_ARCHITECTURE)_$(ZT_VERSION_MAJOR).$(ZT_VERSION_MINOR).$(ZT_VERSION_REV)_$(ZT_VERSION_BUILD).exe
-	$(NOTARIZE) -t osx -f "ZeroTier One.pkg" --primary-bundle-id com.zerotier.pkg.ZeroTierOne --output-format xml --notarize-app -u $(NOTARIZE_USER_ID)
-	echo '*** When Apple notifies that the app is notarized, run: xcrun stapler staple "ZeroTier One.pkg"'
+	cat ext/installfiles/mac-update/updater.tmpl.sh "BackOne.pkg" >zt1_update_$(ZT_BUILD_PLATFORM)_$(ZT_BUILD_ARCHITECTURE)_$(ZT_VERSION_MAJOR).$(ZT_VERSION_MINOR).$(ZT_VERSION_REV)_$(ZT_VERSION_BUILD).exe
+	$(NOTARIZE) -t osx -f "BackOne.pkg" --primary-bundle-id com.backone.pkg.BackOne --output-format xml --notarize-app -u $(NOTARIZE_USER_ID)
+	echo '*** When Apple notifies that the app is notarized, run: xcrun stapler staple "BackOne.pkg"'
 
-# For ZeroTier, Inc. to build official signed packages
+# For BackOne, Inc. to build official signed packages
 official: FORCE
 	cd ../DesktopUI ; make ZT_OFFICIAL_RELEASE=1
 	make clean
@@ -180,7 +180,7 @@ central-controller-docker: FORCE
 	docker build --no-cache -t registry.zerotier.com/zerotier-central/ztcentral-controller:${TIMESTAMP} -f ext/central-controller-docker/Dockerfile --build-arg git_branch=$(shell git name-rev --name-only HEAD) .
 
 clean:
-	rm -rf MacEthernetTapAgent *.dSYM build-* *.a *.pkg *.dmg *.o node/*.o controller/*.o service/*.o osdep/*.o ext/http-parser/*.o $(CORE_OBJS) $(ONE_OBJS) zerotier-one zerotier-idtool zerotier-selftest zerotier-cli zerotier doc/node_modules zt1_update_$(ZT_BUILD_PLATFORM)_$(ZT_BUILD_ARCHITECTURE)_* zeroidc/target/
+	rm -rf MacEthernetTapAgent *.dSYM build-* *.a *.pkg *.dmg *.o node/*.o controller/*.o service/*.o osdep/*.o ext/http-parser/*.o $(CORE_OBJS) $(ONE_OBJS) backone backone-idtool backone-selftest backone-cli backone doc/node_modules zt1_update_$(ZT_BUILD_PLATFORM)_$(ZT_BUILD_ARCHITECTURE)_* zeroidc/target/
 
 distclean:	clean
 
