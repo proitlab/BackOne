@@ -278,7 +278,7 @@ static int cli(int argc,char **argv)
 				if (hd) {
 					char p[4096];
 #ifdef __APPLE__
-					OSUtils::ztsnprintf(p,sizeof(p),"%s/Library/Application Support/ZeroTier/One/authtoken.secret",hd);
+					OSUtils::ztsnprintf(p,sizeof(p),"%s/Library/Application Support/BackOne/authtoken.secret",hd);
 #else
 					OSUtils::ztsnprintf(p,sizeof(p),"%s/.zeroTierOneAuthToken",hd);
 #endif
