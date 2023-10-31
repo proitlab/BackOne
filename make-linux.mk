@@ -76,16 +76,16 @@ endif
 
 ifeq ($(ZT_QNAP), 1)
 	override DEFS+=-D__QNAP__
-	ZT_EMBEDDED=1
+	ZT_EMBEDDED=0
 endif
 ifeq ($(ZT_UBIQUITI), 1)
 	override DEFS+=-D__UBIQUITI__
-	ZT_EMBEDDED=1
+	ZT_EMBEDDED=0
 endif
 
 ifeq ($(ZT_SYNOLOGY), 1)
 	override DEFS+=-D__SYNOLOGY__
-	ZT_EMBEDDED=1
+	ZT_EMBEDDED=0
 endif
 
 ifeq ($(ZT_DISABLE_COMPRESSION), 1)
