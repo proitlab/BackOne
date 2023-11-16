@@ -396,7 +396,7 @@ std::vector<std::string> OSUtils::split(const char *s,const char *const sep,cons
 std::string OSUtils::platformDefaultHomePath()
 {
 #ifdef __QNAP__
-	char *cmd = "/sbin/getcfg zerotier Install_Path -f /etc/config/qpkg.conf";
+	char *cmd = "/sbin/getcfg backone Install_Path -f /etc/config/qpkg.conf";
     char buf[128];
     FILE *fp;
     if ((fp = popen(cmd, "r")) == NULL) {
@@ -414,7 +414,7 @@ std::string OSUtils::platformDefaultHomePath()
 #endif
 #ifdef __UBIQUITI__
 	// Only persistent location after firmware upgrades
-	return std::string("/config/zerotier-one");
+	return std::string("/config/backone");
 #endif
 
     // Check for user-defined environment variable before using defaults
@@ -436,15 +436,15 @@ std::string OSUtils::platformDefaultHomePath()
 
 #ifdef __APPLE__
 	// /Library/... on Apple
-	return std::string("/Library/Application Support/ZeroTier/One");
+	return std::string("/Library/Application Support/BackOne");
 #else
 
 #ifdef __BSD__
 	// BSD likes /var/db instead of /var/lib
-	return std::string("/var/db/zerotier-one");
+	return std::string("/var/db/backone");
 #else
 	// Use /var/lib for Linux and other *nix
-	return std::string("/var/lib/zerotier-one");
+	return std::string("/var/lib/backone");
 #endif
 
 #endif
