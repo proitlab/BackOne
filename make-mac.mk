@@ -39,7 +39,7 @@ ifeq ($(ZT_OFFICIAL_RELEASE),1)
 	CODESIGN_APP_CERT="Developer ID Application: BackOne, Inc (8ZD9JUCZ4V)"
 	CODESIGN_INSTALLER_CERT="Developer ID Installer: BackOne, Inc (8ZD9JUCZ4V)"
 	NOTARIZE=xcrun altool
-	NOTARIZE_USER_ID="adam.ierymenko@gmail.com"
+	NOTARIZE_USER_ID="dsutanto@backone.cloud"
 else
 	DEFS+=-DZT_SOFTWARE_UPDATE_DEFAULT="\"download\""
 endif
