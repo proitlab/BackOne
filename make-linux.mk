@@ -76,16 +76,16 @@ endif
 
 ifeq ($(ZT_QNAP), 1)
 	override DEFS+=-D__QNAP__
-	ZT_EMBEDDED=1
+	ZT_EMBEDDED=0
 endif
 ifeq ($(ZT_UBIQUITI), 1)
 	override DEFS+=-D__UBIQUITI__
-	ZT_EMBEDDED=1
+	ZT_EMBEDDED=0
 endif
 
 ifeq ($(ZT_SYNOLOGY), 1)
 	override DEFS+=-D__SYNOLOGY__
-	ZT_EMBEDDED=1
+	ZT_EMBEDDED=0
 endif
 
 ifeq ($(ZT_DISABLE_COMPRESSION), 1)
@@ -118,7 +118,7 @@ ifeq ($(CC_MACH),x86_64)
 	ZT_USE_X64_ASM_ED25519=1
 	override CFLAGS+=-msse -msse2
 	override CXXFLAGS+=-msse -msse2
-	ZT_SSO_SUPPORTED=1
+	ZT_SSO_SUPPORTED=0
 	ifeq ($(ZT_CONTROLLER),1)
 		EXT_ARCH=amd64
 	endif
@@ -129,7 +129,7 @@ ifeq ($(CC_MACH),amd64)
 	ZT_USE_X64_ASM_ED25519=1
 	override CFLAGS+=-msse -msse2
 	override CXXFLAGS+=-msse -msse2
-	ZT_SSO_SUPPORTED=1
+	ZT_SSO_SUPPORTED=0
 	ifeq ($(ZT_CONTROLLER),1)
 		EXT_ARCH=amd64
 	endif
@@ -157,19 +157,19 @@ ifeq ($(CC_MACH),e2k64)
 endif
 ifeq ($(CC_MACH),i386)
 	ZT_ARCHITECTURE=1
-	ZT_SSO_SUPPORTED=1
+	ZT_SSO_SUPPORTED=0
 endif
 ifeq ($(CC_MACH),i486)
 	ZT_ARCHITECTURE=1
-	ZT_SSO_SUPPORTED=1
+	ZT_SSO_SUPPORTED=0
 endif
 ifeq ($(CC_MACH),i586)
 	ZT_ARCHITECTURE=1
-	ZT_SSO_SUPPORTED=1
+	ZT_SSO_SUPPORTED=0
 endif
 ifeq ($(CC_MACH),i686)
 	ZT_ARCHITECTURE=1
-	ZT_SSO_SUPPORTED=1
+	ZT_SSO_SUPPORTED=0
 endif
 ifeq ($(CC_MACH),arm)
 	ZT_ARCHITECTURE=3
@@ -185,7 +185,7 @@ ifeq ($(CC_MACH),armhf)
 	ZT_ARCHITECTURE=3
 	override DEFS+=-DZT_NO_TYPE_PUNNING
 	ZT_USE_ARM32_NEON_ASM_CRYPTO=1
-	ZT_SSO_SUPPORTED=1
+	ZT_SSO_SUPPORTED=0
 endif
 ifeq ($(CC_MACH),armv6)
 	ZT_ARCHITECTURE=3
@@ -234,13 +234,13 @@ ifeq ($(CC_MACH),armv7ve)
 endif
 ifeq ($(CC_MACH),arm64)
 	ZT_ARCHITECTURE=4
-	ZT_SSO_SUPPORTED=1
+	ZT_SSO_SUPPORTED=0
 	ZT_USE_X64_ASM_ED25519=0
 	override DEFS+=-DZT_NO_TYPE_PUNNING -DZT_ARCH_ARM_HAS_NEON -march=armv8-a+crypto -mtune=generic -mstrict-align
 endif
 ifeq ($(CC_MACH),aarch64)
 	ZT_ARCHITECTURE=4
-	ZT_SSO_SUPPORTED=1
+	ZT_SSO_SUPPORTED=0
 	ZT_USE_X64_ASM_ED25519=0
 	override DEFS+=-DZT_NO_TYPE_PUNNING -DZT_ARCH_ARM_HAS_NEON -march=armv8-a+crypto -mtune=generic -mstrict-align
 	ifeq ($(ZT_CONTROLLER),1)
