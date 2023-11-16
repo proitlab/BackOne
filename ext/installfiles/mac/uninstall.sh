@@ -7,35 +7,35 @@ if [ "$UID" -ne 0 ]; then
 	exit 1
 fi
 
-if [ ! -f '/Library/LaunchDaemons/com.backone.plist' ]; then
-	echo 'BackOne does not seem to be installed.'
+if [ ! -f '/Library/LaunchDaemons/com.zerotier.one.plist' ]; then
+	echo 'ZeroTier One does not seem to be installed.'
 	exit 1
 fi
 
 cd /
 
-echo 'Stopping any running BackOne service...'
-launchctl unload '/Library/LaunchDaemons/com.backone.plist' >>/dev/null 2>&1
+echo 'Stopping any running ZeroTier One service...'
+launchctl unload '/Library/LaunchDaemons/com.zerotier.one.plist' >>/dev/null 2>&1
 sleep 1
-killall -TERM backone >>/dev/null 2>&1
+killall -TERM zerotier-one >>/dev/null 2>&1
 sleep 1
-killall -KILL backone >>/dev/null 2>&1
+killall -KILL zerotier-one >>/dev/null 2>&1
 
-echo "Removing BackOne files..."
+echo "Removing ZeroTier One files..."
 
-rm -rf '/Applications/BackOne.app'
-#rm -rf '/Applications/ZeroTier.app'
-rm -f '/usr/local/bin/backone' '/usr/local/bin/backone-idtool' '/usr/local/bin/backone-cli' '/Library/LaunchDaemons/com.backone.plist'
+rm -rf '/Applications/ZeroTier One.app'
+rm -rf '/Applications/ZeroTier.app'
+rm -f '/usr/local/bin/zerotier-one' '/usr/local/bin/zerotier-idtool' '/usr/local/bin/zerotier-cli' '/Library/LaunchDaemons/com.zerotier.one.plist'
 
-cd '/Library/Application Support/BackOne'
-if [ "`pwd`" = '/Library/Application Support/BackOne' ]; then
-	rm -rf *.d *.sh *.log *.old *.kext *.conf *.pkg *.dmg *.pid *.port *.save *.bin planet backone-* devicemap
+cd '/Library/Application Support/ZeroTier/One'
+if [ "`pwd`" = '/Library/Application Support/ZeroTier/One' ]; then
+	rm -rf *.d *.sh *.log *.old *.kext *.conf *.pkg *.dmg *.pid *.port *.save *.bin planet zerotier-* devicemap
 fi
 
 echo 'Uninstall complete.'
 echo
 echo 'Your identity and secret authentication token have been preserved in:'
-echo '  /Library/Application Support/BackOne'
+echo '  /Library/Application Support/ZeroTier/One'
 echo
 echo 'You can delete this folder and its contents if you do not intend to re-use'
 echo 'them.'

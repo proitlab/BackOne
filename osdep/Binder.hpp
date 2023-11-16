@@ -42,7 +42,7 @@
 
 #if (defined(__unix__) || defined(__APPLE__)) && !defined(__LINUX__) && !defined(ZT_SDK)
 #include <net/if.h>
-#if ! defined(TARGET_OS_IOS)
+#if TARGET_OS_OSX
 #include <netinet6/in6_var.h>
 #endif
 #include <sys/ioctl.h>
@@ -87,11 +87,10 @@ namespace ZeroTier {
 class Binder {
   private:
 	struct _Binding {
-		_Binding() : udpSock((PhySocket*)0), tcpListenSock((PhySocket*)0)
+		_Binding() : udpSock((PhySocket*)0)
 		{
 		}
 		PhySocket* udpSock;
-		PhySocket* tcpListenSock;
 		InetAddress address;
 		char ifname[256] = {};
 	};
@@ -111,7 +110,6 @@ class Binder {
 		Mutex::Lock _l(_lock);
 		for (unsigned int b = 0, c = _bindingCount; b < c; ++b) {
 			phy.close(_bindings[b].udpSock, false);
-			phy.close(_bindings[b].tcpListenSock, false);
 		}
 		_bindingCount = 0;
 	}
@@ -133,7 +131,7 @@ class Binder {
 	template <typename PHY_HANDLER_TYPE, typename INTERFACE_CHECKER> void refresh(Phy<PHY_HANDLER_TYPE>& phy, unsigned int* ports, unsigned int portCount, const std::vector<InetAddress> explicitBind, INTERFACE_CHECKER& ifChecker)
 	{
 		std::map<InetAddress, std::string> localIfAddrs;
-		PhySocket *udps, *tcps;
+		PhySocket *udps;
 		Mutex::Lock _l(_lock);
 		bool interfacesEnumerated = true;
 
@@ -320,7 +318,7 @@ class Binder {
 			//
 			(void)gotViaProc;
 
-#if ! (defined(ZT_SDK) || defined(__ANDROID__))	  // getifaddrs() freeifaddrs() not available on Android
+#if ! defined(__ANDROID__)	  // getifaddrs() freeifaddrs() not available on Android
 			if (! gotViaProc) {
 				struct ifaddrs* ifatbl = (struct ifaddrs*)0;
 				struct ifaddrs* ifa;
@@ -333,7 +331,7 @@ class Binder {
 					while (ifa) {
 						if ((ifa->ifa_name) && (ifa->ifa_addr)) {
 							InetAddress ip = *(ifa->ifa_addr);
-#if (defined(__unix__) || defined(__APPLE__)) && !defined(__LINUX__) && !defined(ZT_SDK) && !defined(TARGET_OS_IOS)
+#if (defined(__unix__) || defined(__APPLE__)) && !defined(__LINUX__) && !defined(ZT_SDK) && TARGET_OS_OSX
 							// Check if the address is an IPv6 Temporary Address, macOS/BSD version
 							if (ifa->ifa_addr->sa_family == AF_INET6) {
 								struct sockaddr_in6* sa6 = (struct sockaddr_in6*)ifa->ifa_addr;
@@ -349,8 +347,8 @@ class Binder {
 
 								// if this is a temporary IPv6 address, skip to the next address
 								if (flags & IN6_IFF_TEMPORARY) {
-									char buf[64];
 #ifdef ZT_TRACE
+									char buf[64];
 									fprintf(stderr, "skip binding to temporary IPv6 address: %s\n", ip.toIpString(buf));
 #endif
 									ifa = ifa->ifa_next;
@@ -419,11 +417,8 @@ class Binder {
 			}
 			else {
 				PhySocket* const udps = _bindings[b].udpSock;
-				PhySocket* const tcps = _bindings[b].tcpListenSock;
 				_bindings[b].udpSock = (PhySocket*)0;
-				_bindings[b].tcpListenSock = (PhySocket*)0;
 				phy.close(udps, false);
-				phy.close(tcps, false);
 			}
 		}
 
@@ -437,24 +432,20 @@ class Binder {
 			}
 			if (bi == _bindingCount) {
 				udps = phy.udpBind(reinterpret_cast<const struct sockaddr*>(&(ii->first)), (void*)0, ZT_UDP_DESIRED_BUF_SIZE);
-				tcps = phy.tcpListen(reinterpret_cast<const struct sockaddr*>(&(ii->first)), (void*)0);
-				if ((udps) && (tcps)) {
+				if (udps) {
 #ifdef __LINUX__
 					// Bind Linux sockets to their device so routes that we manage do not override physical routes (wish all platforms had this!)
 					if (ii->second.length() > 0) {
 						char tmp[256];
 						Utils::scopy(tmp, sizeof(tmp), ii->second.c_str());
 						int fd = (int)Phy<PHY_HANDLER_TYPE>::getDescriptor(udps);
-						if (fd >= 0)
+						if (fd >= 0) {
 							setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp, strlen(tmp));
-						fd = (int)Phy<PHY_HANDLER_TYPE>::getDescriptor(tcps);
-						if (fd >= 0)
-							setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp, strlen(tmp));
+						}
 					}
 #endif	 // __LINUX__
 					if (_bindingCount < ZT_BINDER_MAX_BINDINGS) {
 						_bindings[_bindingCount].udpSock = udps;
-						_bindings[_bindingCount].tcpListenSock = tcps;
 						_bindings[_bindingCount].address = ii->first;
 						memcpy(_bindings[_bindingCount].ifname, (char*)ii->second.c_str(), (int)ii->second.length());
 						++_bindingCount;
@@ -462,7 +453,6 @@ class Binder {
 				}
 				else {
 					phy.close(udps, false);
-					phy.close(tcps, false);
 				}
 			}
 		}

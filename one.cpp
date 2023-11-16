@@ -1,5 +1,5 @@
 /*
- * Copyright (c)2020 BackOne, Inc.
+ * Copyright (c)2020 ZeroTier, Inc.
  *
  * Use of this software is governed by the Business Source License included
  * in the LICENSE.TXT file in the project's root directory.
@@ -98,18 +98,18 @@
 #include <ifaddrs.h>
 #endif
 
-#define ZT_PID_PATH "backone.pid"
+#define ZT_PID_PATH "zerotier-one.pid"
 
 using namespace ZeroTier;
 
 static OneService *volatile zt1Service = (OneService *)0;
 
-#define PROGRAM_NAME "BackOne"
-#define COPYRIGHT_NOTICE "Copyright (c) 2020 BackOne, Inc."
-#define LICENSE_GRANT "Licensed under the BackOne BSL 1.1 (see LICENSE.txt)"
+#define PROGRAM_NAME "ZeroTier One"
+#define COPYRIGHT_NOTICE "Copyright (c) 2020 ZeroTier, Inc."
+#define LICENSE_GRANT "Licensed under the ZeroTier BSL 1.1 (see LICENSE.txt)"
 
 /****************************************************************************/
-/* backone-cli personality                                                 */
+/* zerotier-cli personality                                                 */
 /****************************************************************************/
 
 // This is getting deprecated soon in favor of the stuff in cli/
@@ -129,7 +129,7 @@ static void cliPrintHelp(const char *pn,FILE *out)
 	fprintf(out,"  -h                      - Display this help" ZT_EOL_S);
 	fprintf(out,"  -v                      - Show version" ZT_EOL_S);
 	fprintf(out,"  -j                      - Display full raw JSON output" ZT_EOL_S);
-	fprintf(out,"  -D<path>                - BackOne home path for parameter auto-detect" ZT_EOL_S);
+	fprintf(out,"  -D<path>                - ZeroTier home path for parameter auto-detect" ZT_EOL_S);
 	fprintf(out,"  -p<port>                - HTTP port (default: auto)" ZT_EOL_S);
 	fprintf(out,"  -T<token>               - Authentication token (default: auto)" ZT_EOL_S);
 	fprintf(out,ZT_EOL_S"Available commands:" ZT_EOL_S);
@@ -147,9 +147,9 @@ static void cliPrintHelp(const char *pn,FILE *out)
 	fprintf(out,"  dump                    - Debug settings dump for support" ZT_EOL_S);
 	fprintf(out,ZT_EOL_S"Available settings:" ZT_EOL_S);
 	fprintf(out,"  Settings to use with [get/set] may include property names from " ZT_EOL_S);
-	fprintf(out,"  the JSON output of \"backone-cli -j listnetworks\". Additionally, " ZT_EOL_S);
+	fprintf(out,"  the JSON output of \"zerotier-cli -j listnetworks\". Additionally, " ZT_EOL_S);
 	fprintf(out,"  (ip, ip4, ip6, ip6plane, and ip6prefix can be used). For instance:" ZT_EOL_S);
-	fprintf(out,"  backone-cli get <network ID> ip6plane will return the 6PLANE address" ZT_EOL_S);
+	fprintf(out,"  zerotier-cli get <network ID> ip6plane will return the 6PLANE address" ZT_EOL_S);
 	fprintf(out,"  assigned to this node." ZT_EOL_S);
 }
 
@@ -171,7 +171,7 @@ static int cli(int argc,char **argv)
 #endif
 {
 	unsigned int port = 0;
-	std::string homeDir,command,arg1,arg2,authToken;
+	std::string homeDir,command,arg1,arg2,arg3,arg4,authToken;
 	std::string ip("127.0.0.1");
 	bool json = false;
 	for(int i=1;i<argc;++i) {
@@ -262,10 +262,10 @@ static int cli(int argc,char **argv)
 
 		if (!port) {
 			std::string portStr;
-			OSUtils::readFile((homeDir + ZT_PATH_SEPARATOR_S + "backone.port").c_str(),portStr);
+			OSUtils::readFile((homeDir + ZT_PATH_SEPARATOR_S + "zerotier-one.port").c_str(),portStr);
 			port = Utils::strToUInt(portStr.c_str());
 			if ((port == 0)||(port > 0xffff)) {
-				fprintf(stderr,"%s: missing port and backone.port not found in %s" ZT_EOL_S,argv[0],homeDir.c_str());
+				fprintf(stderr,"%s: missing port and zerotier-one.port not found in %s" ZT_EOL_S,argv[0],homeDir.c_str());
 				return 2;
 			}
 		}
@@ -278,7 +278,7 @@ static int cli(int argc,char **argv)
 				if (hd) {
 					char p[4096];
 #ifdef __APPLE__
-					OSUtils::ztsnprintf(p,sizeof(p),"%s/Library/Application Support/BackOne/authtoken.secret",hd);
+					OSUtils::ztsnprintf(p,sizeof(p),"%s/Library/Application Support/ZeroTier/One/authtoken.secret",hd);
 #else
 					OSUtils::ztsnprintf(p,sizeof(p),"%s/.zeroTierOneAuthToken",hd);
 #endif
@@ -326,7 +326,7 @@ static int cli(int argc,char **argv)
 		const unsigned int scode = Http::GET(1024 * 1024 * 16,60000,(const struct sockaddr *)&addr,"/status",requestHeaders,responseHeaders,responseBody);
 
 		if (scode == 0) {
-			printf("Error connecting to the BackOne service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
+			printf("Error connecting to the ZeroTier service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
 			return 1;
 		}
 
@@ -361,7 +361,7 @@ static int cli(int argc,char **argv)
 		const unsigned int scode = Http::GET(1024 * 1024 * 16,60000,(const struct sockaddr *)&addr,"/peer",requestHeaders,responseHeaders,responseBody);
 
 		if (scode == 0) {
-			printf("Error connecting to the BackOne service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
+			printf("Error connecting to the ZeroTier service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
 			return 1;
 		}
 
@@ -430,7 +430,7 @@ static int cli(int argc,char **argv)
 		const unsigned int scode = Http::GET(1024 * 1024 * 16,60000,(const struct sockaddr *)&addr,"/peer",requestHeaders,responseHeaders,responseBody);
 
 		if (scode == 0) {
-			printf("Error connecting to the BackOne service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
+			printf("Error connecting to the ZeroTier service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
 			return 1;
 		}
 
@@ -510,16 +510,16 @@ static int cli(int argc,char **argv)
 			return 1;
 		}
 	} else if (command == "bond") {
-		/* backone-cli bond <cmd> */
+		/* zerotier-cli bond <cmd> */
 		if (arg1.empty()) {
 			printf("(bond) command is missing required arguments" ZT_EOL_S);
 			return 2;
 		}
-		/* backone-cli bond list */
+		/* zerotier-cli bond list */
 		if (arg1 == "list") {
 			const unsigned int scode = Http::GET(1024 * 1024 * 16,60000,(const struct sockaddr *)&addr,"/peer",requestHeaders,responseHeaders,responseBody);
 			if (scode == 0) {
-				printf("Error connecting to the BackOne service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
+				printf("Error connecting to the ZeroTier service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
 				return 1;
 			}
 			nlohmann::json j;
@@ -569,9 +569,35 @@ static int cli(int argc,char **argv)
 				return 1;
 			}
 		}
+		else if (arg1 == "setmtu") { /* zerotier-cli bond setmtu <mtu> <iface> <ip> */
+			requestHeaders["Content-Type"] = "application/json";
+			requestHeaders["Content-Length"] = "2";
+			if (argc == 8) {
+				arg2 = argv[5];
+				arg3 = argv[6];
+				arg4 = argv[7];
+			}
+			unsigned int scode = Http::POST(
+				1024 * 1024 * 16,
+				60000,
+				(const struct sockaddr *)&addr,
+				(std::string("/bond/") + arg1 + "/" + arg2 + "/" + arg3 + "/" + arg4).c_str(),
+				requestHeaders,
+				"{}",
+				2,
+				responseHeaders,
+				responseBody);
+			if (scode == 200) {
+				printf("200 setmtu OK" ZT_EOL_S);
+				return 0;
+			} else {
+				printf("no link match found, new MTU was not applied" ZT_EOL_S);
+				return 1;
+			}
+			return 0;
+		}
 		else if (arg1.length() == 10) {
-			if (arg2 == "rotate") { /* backone-cli bond <peerId> rotate */
-				fprintf(stderr, "backone-cli bond <peerId> rotate\n");
+			if (arg2 == "rotate") { /* zerotier-cli bond <peerId> rotate */
 				requestHeaders["Content-Type"] = "application/json";
 				requestHeaders["Content-Length"] = "2";
 				unsigned int scode = Http::POST(
@@ -588,7 +614,7 @@ static int cli(int argc,char **argv)
 					if (json) {
 						printf("%s",cliFixJsonCRs(responseBody).c_str());
 					} else {
-						printf("200 bond OK" ZT_EOL_S);
+						printf("200 rotate OK" ZT_EOL_S);
 					}
 					return 0;
 				} else {
@@ -598,7 +624,7 @@ static int cli(int argc,char **argv)
 				return 0;
 			}
 			if (arg2 == "show") {
-				//fprintf(stderr, "backone-cli bond <peerId> show\n");
+				//fprintf(stderr, "zerotier-cli bond <peerId> show\n");
 				const unsigned int scode = Http::GET(
 					1024 * 1024 * 16,60000,
 					(const struct sockaddr *)&addr,(std::string("/bond/") + arg2 + "/" + arg1).c_str(),
@@ -606,7 +632,7 @@ static int cli(int argc,char **argv)
 					responseHeaders,
 					responseBody);
 				if (scode == 0) {
-					printf("Error connecting to the BackOne service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
+					printf("Error connecting to the ZeroTier service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
 					return 1;
 				}
 				nlohmann::json j;
@@ -680,14 +706,14 @@ static int cli(int argc,char **argv)
 				return 2;
 			}
 		}
-		/* backone-cli bond command was malformed in some way */
+		/* zerotier-cli bond command was malformed in some way */
 		printf("(bond) command is missing required arguments" ZT_EOL_S);
 		return 2;
 	} else if (command == "listbonds") {
 		const unsigned int scode = Http::GET(1024 * 1024 * 16,60000,(const struct sockaddr *)&addr,"/peer",requestHeaders,responseHeaders,responseBody);
 
 		if (scode == 0) {
-			printf("Error connecting to the BackOne service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
+			printf("Error connecting to the ZeroTier service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
 			return 1;
 		}
 
@@ -742,7 +768,7 @@ static int cli(int argc,char **argv)
 		const unsigned int scode = Http::GET(1024 * 1024 * 16,60000,(const struct sockaddr *)&addr,"/network",requestHeaders,responseHeaders,responseBody);
 
 		if (scode == 0) {
-			printf("Error connecting to the BackOne service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
+			printf("Error connecting to the ZeroTier service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
 			return 1;
 		}
 
@@ -863,7 +889,7 @@ static int cli(int argc,char **argv)
 		const unsigned int scode = Http::GET(1024 * 1024 * 16,60000,(const struct sockaddr *)&addr,"/moon",requestHeaders,responseHeaders,responseBody);
 
 		if (scode == 0) {
-			printf("Error connecting to the BackOne service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
+			printf("Error connecting to the ZeroTier service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
 			return 1;
 		}
 
@@ -986,7 +1012,7 @@ static int cli(int argc,char **argv)
 		}
 		const unsigned int scode = Http::GET(1024 * 1024 * 16,60000,(const struct sockaddr *)&addr,"/network",requestHeaders,responseHeaders,responseBody);
 		if (scode == 0) {
-			printf("Error connecting to the BackOne service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
+			printf("Error connecting to the ZeroTier service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
 			return 1;
 		}
 		nlohmann::json j;
@@ -1080,14 +1106,14 @@ static int cli(int argc,char **argv)
 #else
 		dump << "other unix based OS" << ZT_EOL_S;
 #endif
-		dump << "backone version: " << ZEROTIER_ONE_VERSION_MAJOR << "."
+		dump << "zerotier version: " << ZEROTIER_ONE_VERSION_MAJOR << "."
 			<< ZEROTIER_ONE_VERSION_MINOR << "." << ZEROTIER_ONE_VERSION_REVISION << ZT_EOL_S << ZT_EOL_S;
 
 		// grab status
 		dump << "status" << ZT_EOL_S << "------" << ZT_EOL_S;
 		unsigned int scode = Http::GET(1024 * 1024 * 16,60000,(const struct sockaddr *)&addr,"/status",requestHeaders,responseHeaders,responseBody);
 		if (scode != 200) {
-			printf("Error connecting to the BackOne service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
+			printf("Error connecting to the ZeroTier service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
 			return 1;
 		}
 		dump << responseBody << ZT_EOL_S;
@@ -1099,7 +1125,7 @@ static int cli(int argc,char **argv)
 		dump << ZT_EOL_S << "networks" << ZT_EOL_S << "--------" << ZT_EOL_S;
 		scode = Http::GET(1024 * 1024 * 16,60000,(const struct sockaddr *)&addr,"/network",requestHeaders,responseHeaders,responseBody);
 		if (scode != 200) {
-			printf("Error connecting to the BackOne service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
+			printf("Error connecting to the ZeroTier service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
 			return 1;
 		}
 		dump << responseBody << ZT_EOL_S;
@@ -1111,7 +1137,7 @@ static int cli(int argc,char **argv)
 		dump << ZT_EOL_S << "peers" << ZT_EOL_S << "-----" << ZT_EOL_S;
 		scode = Http::GET(1024 * 1024 * 16,60000,(const struct sockaddr *)&addr,"/peer",requestHeaders,responseHeaders,responseBody);
 		if (scode != 200) {
-			printf("Error connecting to the BackOne service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
+			printf("Error connecting to the ZeroTier service: %s\n\nPlease check that the service is running and that TCP port 9993 can be contacted via 127.0.0.1." ZT_EOL_S, responseBody.c_str());
 			return 1;
 		}
 		dump << responseBody << ZT_EOL_S;
@@ -1190,7 +1216,7 @@ static int cli(int argc,char **argv)
 			return 0;
 		}
 
-		sprintf((char*)path, "%s%sbackone_dump.txt", (char*)path, ZT_PATH_SEPARATOR_S);
+		sprintf((char*)path, "%s%szerotier_dump.txt", (char*)path, ZT_PATH_SEPARATOR_S);
 
 		fprintf(stdout, "Writing dump to: %s\n", path);
 		int fd = open((char*)path, O_CREAT|O_RDWR,0664);
@@ -1267,7 +1293,7 @@ static int cli(int argc,char **argv)
 
 		char path[MAX_PATH + 1] = {};
 		if (SHGetFolderPathA(NULL, CSIDL_DESKTOP, NULL, 0, path) == S_OK) {
-			sprintf(path, "%s%sbackone_dump.txt", path, ZT_PATH_SEPARATOR_S);
+			sprintf(path, "%s%szerotier_dump.txt", path, ZT_PATH_SEPARATOR_S);
 			fprintf(stdout, "Writing dump to: %s\n", path);
 			HANDLE file = CreateFileA(
 				path,
@@ -1362,7 +1388,7 @@ static int cli(int argc,char **argv)
 		close(sock);
 		char cwd[16384];
 		getcwd(cwd, sizeof(cwd));
-		sprintf(cwd, "%s%sbackone_dump.txt", cwd, ZT_PATH_SEPARATOR_S);
+		sprintf(cwd, "%s%szerotier_dump.txt", cwd, ZT_PATH_SEPARATOR_S);
 		fprintf(stdout, "Writing dump to: %s\n", cwd);
 		int fd = open(cwd, O_CREAT|O_RDWR,0664);
 		if (fd == -1) {
@@ -1386,7 +1412,7 @@ static int cli(int argc,char **argv)
 }
 
 /****************************************************************************/
-/* backone-idtool personality                                              */
+/* zerotier-idtool personality                                              */
 /****************************************************************************/
 
 static void idtoolPrintHelp(FILE *out,const char *pn)
@@ -1683,7 +1709,7 @@ static void _sighandlerQuit(int sig)
 }
 #endif
 
-// Drop privileges on Linux, if supported by libc etc. and "backone" user exists on system
+// Drop privileges on Linux, if supported by libc etc. and "zerotier-one" user exists on system
 #if defined(__LINUX__) && !defined(ZT_NO_CAPABILITIES)
 #ifndef PR_CAP_AMBIENT
 #define PR_CAP_AMBIENT 47
@@ -1692,7 +1718,7 @@ static void _sighandlerQuit(int sig)
 #define PR_CAP_AMBIENT_LOWER 3
 #define PR_CAP_AMBIENT_CLEAR_ALL 4
 #endif
-#define ZT_LINUX_USER "backone"
+#define ZT_LINUX_USER "zerotier-one"
 #define ZT_HAVE_DROP_PRIVILEGES 1
 namespace {
 
@@ -1758,7 +1784,7 @@ static void dropPrivileges(const char *procName,const std::string &homeDir)
 	if (getuid() != 0)
 		return;
 
-	// dropPrivileges switches to backone user while retaining CAP_NET_ADMIN
+	// dropPrivileges switches to zerotier-one user while retaining CAP_NET_ADMIN
 	// and CAP_NET_RAW capabilities.
 	struct passwd *targetUser = getpwnam(ZT_LINUX_USER);
 	if (!targetUser)
@@ -1785,7 +1811,7 @@ static void dropPrivileges(const char *procName,const std::string &homeDir)
 	int oldDumpable = prctl(PR_GET_DUMPABLE);
 	if (prctl(PR_SET_DUMPABLE, 0) < 0) {
 		// Disable ptracing. Otherwise there is a small window when previous
-		// compromised BackOne process could ptrace us, when we still have CAP_SETUID.
+		// compromised ZeroTier process could ptrace us, when we still have CAP_SETUID.
 		// (this is mitigated anyway on most distros by ptrace_scope=1)
 		fprintf(stderr,"%s: FATAL: prctl(PR_SET_DUMPABLE) failed while attempting to relinquish root permissions" ZT_EOL_S,procName);
 		exit(1);
@@ -1857,7 +1883,7 @@ static void _winPokeAHole()
 		startupInfo.cb = sizeof(startupInfo);
 		memset(&startupInfo,0,sizeof(STARTUPINFOA));
 		memset(&processInfo,0,sizeof(PROCESS_INFORMATION));
-		if (CreateProcessA(NULL,(LPSTR)(std::string("C:\\Windows\\System32\\netsh.exe advfirewall firewall delete rule name=\"BackOne\" program=\"") + myPath + "\"").c_str(),NULL,NULL,FALSE,CREATE_NO_WINDOW,NULL,NULL,&startupInfo,&processInfo)) {
+		if (CreateProcessA(NULL,(LPSTR)(std::string("C:\\Windows\\System32\\netsh.exe advfirewall firewall delete rule name=\"ZeroTier One\" program=\"") + myPath + "\"").c_str(),NULL,NULL,FALSE,CREATE_NO_WINDOW,NULL,NULL,&startupInfo,&processInfo)) {
 			WaitForSingleObject(processInfo.hProcess,INFINITE);
 			CloseHandle(processInfo.hProcess);
 			CloseHandle(processInfo.hThread);
@@ -1866,7 +1892,7 @@ static void _winPokeAHole()
 		startupInfo.cb = sizeof(startupInfo);
 		memset(&startupInfo,0,sizeof(STARTUPINFOA));
 		memset(&processInfo,0,sizeof(PROCESS_INFORMATION));
-		if (CreateProcessA(NULL,(LPSTR)(std::string("C:\\Windows\\System32\\netsh.exe advfirewall firewall add rule name=\"BackOne\" dir=in action=allow program=\"") + myPath + "\" enable=yes").c_str(),NULL,NULL,FALSE,CREATE_NO_WINDOW,NULL,NULL,&startupInfo,&processInfo)) {
+		if (CreateProcessA(NULL,(LPSTR)(std::string("C:\\Windows\\System32\\netsh.exe advfirewall firewall add rule name=\"ZeroTier One\" dir=in action=allow program=\"") + myPath + "\" enable=yes").c_str(),NULL,NULL,FALSE,CREATE_NO_WINDOW,NULL,NULL,&startupInfo,&processInfo)) {
 			WaitForSingleObject(processInfo.hProcess,INFINITE);
 			CloseHandle(processInfo.hProcess);
 			CloseHandle(processInfo.hThread);
@@ -1875,7 +1901,7 @@ static void _winPokeAHole()
 		startupInfo.cb = sizeof(startupInfo);
 		memset(&startupInfo,0,sizeof(STARTUPINFOA));
 		memset(&processInfo,0,sizeof(PROCESS_INFORMATION));
-		if (CreateProcessA(NULL,(LPSTR)(std::string("C:\\Windows\\System32\\netsh.exe advfirewall firewall add rule name=\"BackOne\" dir=out action=allow program=\"") + myPath + "\" enable=yes").c_str(),NULL,NULL,FALSE,CREATE_NO_WINDOW,NULL,NULL,&startupInfo,&processInfo)) {
+		if (CreateProcessA(NULL,(LPSTR)(std::string("C:\\Windows\\System32\\netsh.exe advfirewall firewall add rule name=\"ZeroTier One\" dir=out action=allow program=\"") + myPath + "\" enable=yes").c_str(),NULL,NULL,FALSE,CREATE_NO_WINDOW,NULL,NULL,&startupInfo,&processInfo)) {
 			WaitForSingleObject(processInfo.hProcess,INFINITE);
 			CloseHandle(processInfo.hProcess);
 			CloseHandle(processInfo.hThread);
@@ -2005,8 +2031,8 @@ static void printHelp(const char *cn,FILE *out)
 	fprintf(out,"  -D                - Remove all instances of Windows tap device (Windows)" ZT_EOL_S);
 #endif // __WINDOWS__
 
-	fprintf(out,"  -i                - Generate and manage identities (backone-idtool)" ZT_EOL_S);
-	fprintf(out,"  -q                - Query API (backone-cli)" ZT_EOL_S);
+	fprintf(out,"  -i                - Generate and manage identities (zerotier-idtool)" ZT_EOL_S);
+	fprintf(out,"  -q                - Query API (zerotier-cli)" ZT_EOL_S);
 }
 
 class _OneServiceRunner
@@ -2110,9 +2136,9 @@ int main(int argc,char **argv)
 #endif
 #endif // __WINDOWS__
 
-	if ((strstr(argv[0],"backone-idtool"))||(strstr(argv[0],"ZEROTIER-IDTOOL")))
+	if ((strstr(argv[0],"zerotier-idtool"))||(strstr(argv[0],"ZEROTIER-IDTOOL")))
 		return idtool(argc,argv);
-	if ((strstr(argv[0],"backone-cli"))||(strstr(argv[0],"ZEROTIER-CLI")))
+	if ((strstr(argv[0],"zerotier-cli"))||(strstr(argv[0],"ZEROTIER-CLI")))
 		return cli(argc,argv);
 
 	std::string homeDir;
@@ -2233,6 +2259,27 @@ int main(int argc,char **argv)
 					throw std::runtime_error("home path does not exist, and could not create. Please verify local system permissions.");
 			}
 		}
+	}
+
+	// Check and fix permissions on critical files at startup
+	try {
+		char p[4096];
+		OSUtils::ztsnprintf(p, sizeof(p), "%s" ZT_PATH_SEPARATOR_S "identity.secret", homeDir.c_str());
+		if (OSUtils::fileExists(p)) {
+			OSUtils::lockDownFile(p, false);
+		}
+	}
+	catch (...) {
+	}
+
+	try {
+		char p[4096];
+		OSUtils::ztsnprintf(p, sizeof(p), "%s" ZT_PATH_SEPARATOR_S "authtoken.secret", homeDir.c_str());
+		if (OSUtils::fileExists(p)) {
+			OSUtils::lockDownFile(p, false);
+		}
+	}
+	catch (...) {
 	}
 
 	// This can be removed once the new controller code has been around for many versions

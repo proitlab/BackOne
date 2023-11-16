@@ -2,7 +2,7 @@
 
 export PATH=/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin
 
-cd "/Library/Application Support/BackOne"
+cd "/Library/Application Support/ZeroTier/One"
 
 if [ ! -f authtoken.secret ]; then
 	head -c 1024 /dev/urandom | md5 | head -c 24 >authtoken.secret
@@ -11,38 +11,38 @@ if [ ! -f authtoken.secret ]; then
 	chmod 0600 authtoken.secret
 fi
 
-if [ -f backone.pid ]; then
-	kill `cat backone.pid`
+if [ -f zerotier-one.pid ]; then
+	kill `cat zerotier-one.pid`
 	sleep 1
 	killall MacEthernetTapAgent
 	sleep 1
 	killall -9 MacEthernetTapAgent
 	sleep 1
-	if [ -f backone.pid ]; then
-		kill -9 `cat backone.pid`
-		rm -f backone.pid
+	if [ -f zerotier-one.pid ]; then
+		kill -9 `cat zerotier-one.pid`
+		rm -f zerotier-one.pid
 	fi
 fi
-launchctl load /Library/LaunchDaemons/com.backone.plist >>/dev/null 2>&1
+launchctl load /Library/LaunchDaemons/com.zerotier.one.plist >>/dev/null 2>&1
 sleep 1
 
-rm -f backone-cli backone-idtool
-ln -sf backone backone-cli
-ln -sf backone backone-idtool
+rm -f zerotier-cli zerotier-idtool
+ln -sf zerotier-one zerotier-cli
+ln -sf zerotier-one zerotier-idtool
 if [ ! -d /usr/local/bin ]; then
 	mkdir -p /usr/local/bin
 fi
 cd /usr/local/bin
-rm -f backone-cli backone-idtool
-ln -sf "/Library/Application Support/BackOne/backone" backone-cli
-ln -sf "/Library/Application Support/BackOne/backone" backone-idtool
+rm -f zerotier-cli zerotier-idtool
+ln -sf "/Library/Application Support/ZeroTier/One/zerotier-one" zerotier-cli
+ln -sf "/Library/Application Support/ZeroTier/One/zerotier-one" zerotier-idtool
 
 if [ -f /tmp/zt1-gui-restart.tmp ]; then
 	for u in `cat /tmp/zt1-gui-restart.tmp`; do
-		if [ -f '/Applications/BackOne.app/Contents/MacOS/BackOne' ]; then
-			su $u -c '/usr/bin/open /Applications/BackOne.app &' >>/dev/null 2>&1 &
+		if [ -f '/Applications/ZeroTier One.app/Contents/MacOS/ZeroTier One' ]; then
+			su $u -c '/usr/bin/open /Applications/ZeroTier\ One.app &' >>/dev/null 2>&1 &
 		else
-			su $u -c '/usr/bin/open /Applications/BackOne.app &' >>/dev/null 2>&1 &
+			su $u -c '/usr/bin/open /Applications/ZeroTier.app &' >>/dev/null 2>&1 &
 		fi
 	done
 fi

@@ -1,6 +1,45 @@
 ZeroTier Release Notes
 ======
 
+# 2023-08-25 -- Version 1.12.1
+
+  * Minor release to fix a port binding issue in Linux.
+  * Update Debian dependencies.
+  * No changes for other platforms.
+
+# 2023-08-23 -- Version 1.12.0
+
+  * Experimental Windows ARM64 support
+  * Fix numerous sleep/wake issues on macOS and other platforms
+  * Faster recovery after changes to physical network settings
+  * Prometheus compatible metrics support!
+  * Fix full tunnel mode on recent macOS versions
+  * Numerous macOS DNS fixes
+  * 10-30% speed improvement on Linux
+
+# 2023-03-23 -- Version 1.10.6
+
+  * Prevent binding temporary ipv6 addresses on macos (#1910)
+  * Prevent path-learning loops (#1914)
+  * Prevent infinite loop of UAC prompts in tray app
+
+# 2023-03-10 -- Version 1.10.5
+
+ * Fix for high CPU usage bug on Windows
+
+# 2023-03-07 -- Version 1.10.4
+
+ * SECURITY FIX (Windows): this version fixes a file permission problem on
+   Windows that could allow non-privileged users on a Windows system to read
+   privileged files in the ZeroTier service's working directory. This could
+   allow an unprivileged local Windows user to administrate the local ZeroTier
+   instance without appropriate local permissions. This issue is not remotely
+   exploitable unless a remote user can read arbitrary local files, and does
+   not impact other operating systems.
+
+ * Fix a bug in the handling of multiple IP address assignments to virtual
+   interfaces on macOS.
+
 # 2023-02-15 -- Version 1.10.3
 
  * Fix for duplicate paths in client. Could cause connectivity issues. Affects all platforms.

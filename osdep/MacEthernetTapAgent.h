@@ -23,6 +23,6 @@
 #define ZT_MACETHERNETTAPAGENT_STDIN_CMD_IFCONFIG 1
 #define ZT_MACETHERNETTAPAGENT_STDIN_CMD_EXIT 2
 
-#define ZT_MACETHERNETTAPAGENT_DEFAULT_SYSTEM_PATH "/Library/Application Support/BackOne/MacEthernetTapAgent"
+#define ZT_MACETHERNETTAPAGENT_DEFAULT_SYSTEM_PATH "/Library/Application Support/ZeroTier/One/MacEthernetTapAgent"
 
 #endif

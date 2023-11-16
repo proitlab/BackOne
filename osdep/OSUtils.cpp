@@ -17,6 +17,7 @@
 #include <stdarg.h>
 #include <sys/stat.h>
 #include <stdlib.h>
+#include <inttypes.h>
 
 #include "../node/Constants.hpp"
 #include "../node/Utils.hpp"
@@ -41,11 +42,11 @@
 #include <iphlpapi.h>
 #endif
 
+#include "OSUtils.hpp"
+
 #ifdef __GCC__
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
-
-#include "OSUtils.hpp"
 
 namespace ZeroTier {
 
@@ -64,6 +65,18 @@ unsigned int OSUtils::ztsnprintf(char *buf,unsigned int len,const char *fmt,...)
 	}
 
 	return (unsigned int)n;
+}
+
+std::string OSUtils::networkIDStr(const uint64_t nwid) {
+	char tmp[32] = {};
+	ztsnprintf(tmp, sizeof(tmp), "%.16" PRIx64, nwid);
+	return std::string(tmp);
+}
+
+std::string OSUtils::nodeIDStr(const uint64_t nid) {
+	char tmp[32] = {};
+	ztsnprintf(tmp, sizeof(tmp), "%.10" PRIx64, nid);
+	return std::string(tmp);
 }
 
 #ifdef __UNIX_LIKE__
@@ -257,6 +270,16 @@ void OSUtils::lockDownFile(const char *path,bool isDir)
 			CloseHandle(processInfo.hProcess);
 			CloseHandle(processInfo.hThread);
 		}
+
+		// Remove 'Everyone' group from R/RX access
+		startupInfo.cb = sizeof(startupInfo);
+		memset(&startupInfo, 0, sizeof(STARTUPINFOA));
+		memset(&processInfo, 0, sizeof(PROCESS_INFORMATION));
+		if (CreateProcessA(NULL, (LPSTR)(std::string("C:\\Windows\\System32\\icacls.exe \"") + path + "\" /remove:g Everyone /t /c /Q").c_str(), NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &startupInfo, &processInfo)) {
+			WaitForSingleObject(processInfo.hProcess, INFINITE);
+			CloseHandle(processInfo.hProcess);
+			CloseHandle(processInfo.hThread);
+		}
 	}
 #endif
 #endif
@@ -373,7 +396,7 @@ std::vector<std::string> OSUtils::split(const char *s,const char *const sep,cons
 std::string OSUtils::platformDefaultHomePath()
 {
 #ifdef __QNAP__
-	char *cmd = "/sbin/getcfg backone Install_Path -f /etc/config/qpkg.conf";
+	char *cmd = "/sbin/getcfg zerotier Install_Path -f /etc/config/qpkg.conf";
     char buf[128];
     FILE *fp;
     if ((fp = popen(cmd, "r")) == NULL) {
@@ -391,7 +414,7 @@ std::string OSUtils::platformDefaultHomePath()
 #endif
 #ifdef __UBIQUITI__
 	// Only persistent location after firmware upgrades
-	return std::string("/config/backone");
+	return std::string("/config/zerotier-one");
 #endif
 
     // Check for user-defined environment variable before using defaults
@@ -413,15 +436,15 @@ std::string OSUtils::platformDefaultHomePath()
 
 #ifdef __APPLE__
 	// /Library/... on Apple
-	return std::string("/Library/Application Support/BackOne");
+	return std::string("/Library/Application Support/ZeroTier/One");
 #else
 
 #ifdef __BSD__
 	// BSD likes /var/db instead of /var/lib
-	return std::string("/var/db/backone");
+	return std::string("/var/db/zerotier-one");
 #else
 	// Use /var/lib for Linux and other *nix
-	return std::string("/var/lib/backone");
+	return std::string("/var/lib/zerotier-one");
 #endif
 
 #endif
