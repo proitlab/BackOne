@@ -3,15 +3,15 @@
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>com.backone</string>
+	<string>com.zerotier.one</string>
 	<key>UserName</key>
 	<string>root</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/Library/Application Support/BackOne/launch.sh</string>
+		<string>/Library/Application Support/ZeroTier/One/launch.sh</string>
 	</array>
 	<key>WorkingDirectory</key>
-	<string>/Library/Application Support/BackOne</string>
+	<string>/Library/Application Support/ZeroTier/One</string>
 	<key>StandardOutPath</key>
 	<string>/dev/null</string>
 	<key>StandardErrorPath</key>
