@@ -40,7 +40,7 @@ ifeq ($(ZT_OFFICIAL_RELEASE),1)
 	CODESIGN_APP_CERT="Developer ID Application: BackOne, Inc (8ZD9JUCZ4V)"
 	CODESIGN_INSTALLER_CERT="Developer ID Installer: BackOne, Inc (8ZD9JUCZ4V)"
 	NOTARIZE=xcrun notarytool
-	NOTARIZE_APPLE_ID="adam.ierymenko@gmail.com"
+	NOTARIZE_APPLE_ID="dedysutanto@gmail.com"
 	NOTARIZE_TEAM_ID="8ZD9JUCZ4V"
 else
 	DEFS+=-DZT_SOFTWARE_UPDATE_DEFAULT="\"download\""
@@ -168,7 +168,7 @@ mac-dist-pkg: FORCE
 	if [ -f "BackOne Signed.pkg" ]; then mv -f "BackOne Signed.pkg" "BackOne.pkg"; fi
 	rm -f zt1_update_$(ZT_BUILD_PLATFORM)_$(ZT_BUILD_ARCHITECTURE)_*
 	cat ext/installfiles/mac-update/updater.tmpl.sh "BackOne.pkg" >zt1_update_$(ZT_BUILD_PLATFORM)_$(ZT_BUILD_ARCHITECTURE)_$(ZT_VERSION_MAJOR).$(ZT_VERSION_MINOR).$(ZT_VERSION_REV)_$(ZT_VERSION_BUILD).exe
-	$(NOTARIZE) submit --apple-id "adam.ierymenko@gmail.com" --team-id "8ZD9JUCZ4V" --wait "BackOne.pkg"
+	$(NOTARIZE) submit --apple-id "dedysutanto@gmail.com" --team-id "8ZD9JUCZ4V" --wait "BackOne.pkg"
 	echo '*** When Apple notifies that the app is notarized, run: xcrun stapler staple "BackOne.pkg"'
 
 # For BackOne, Inc. to build official signed packages
