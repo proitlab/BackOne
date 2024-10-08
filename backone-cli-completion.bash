@@ -1,13 +1,13 @@
-#compdef zerotier-cli
+#compdef backone-cli
 #autoload
 
 
 _get_network_ids ()
 {
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        COMPREPLY=($(compgen -W "$(ls -1 /Library/Application\ Support/ZeroTier/One/networks.d | cut -c 1-16)" -- ${cur}))
+        COMPREPLY=($(compgen -W "$(ls -1 /Library/Application\ Support/BackOne/networks.d | cut -c 1-16)" -- ${cur}))
     else
-        COMPREPLY=($(compgen -W "$(ls -1 /var/lib/zerotier-one/networks.d | cut -c 1-16)" -- ${cur}))
+        COMPREPLY=($(compgen -W "$(ls -1 /var/lib/backone/networks.d | cut -c 1-16)" -- ${cur}))
     fi
 }
 
@@ -16,7 +16,7 @@ _get_network_ids_from_history ()
     COMPREPLY=($(compgen -W "$(fc -l -1000 -1 | sed -n 's/.*\([[:xdigit:]]\{16\}\).*/\1/p')" -- ${cur}))
 }
 
-_zerotier-cli_completions()
+_backone-cli_completions()
 {
     local cur prev
 
@@ -52,6 +52,6 @@ _zerotier-cli_completions()
     esac
 }
 
-complete -F _zerotier-cli_completions zerotier-cli
+complete -F _backone-cli_completions backone-cli
 
 
