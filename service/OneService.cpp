@@ -1,5 +1,5 @@
 /*
- * Copyright (c)2013-2020 ZeroTier, Inc.
+ * Copyright (c)2013-2020 BackOne, Inc.
  *
  * Use of this software is governed by the Business Source License included
  * in the LICENSE.TXT file in the project's root directory.
@@ -124,14 +124,14 @@ using json = nlohmann::json;
 #define ZT_MAX_HTTP_MESSAGE_SIZE (1024 * 1024 * 64)
 #define ZT_MAX_HTTP_CONNECTIONS 65536
 
-// Interface metric for ZeroTier taps -- this ensures that if we are on WiFi and also
-// bridged via ZeroTier to the same LAN traffic will (if the OS is sane) prefer WiFi.
+// Interface metric for BackOne taps -- this ensures that if we are on WiFi and also
+// bridged via BackOne to the same LAN traffic will (if the OS is sane) prefer WiFi.
 #define ZT_IF_METRIC 5000
 
 // How often to check for new multicast subscriptions on a tap device
 #define ZT_TAP_CHECK_MULTICAST_INTERVAL 5000
 
-// TCP fallback relay (run by ZeroTier, Inc. -- this will eventually go away)
+// TCP fallback relay (run by BackOne, Inc. -- this will eventually go away)
 #ifndef ZT_SDK
 #define ZT_TCP_FALLBACK_RELAY "204.80.128.1/443"
 #endif
@@ -834,7 +834,7 @@ public:
 	 * To attempt to handle NAT/gateway craziness we use three local UDP ports:
 	 *
 	 * [0] is the normal/default port, usually 9993
-	 * [1] is a port derived from our ZeroTier address
+	 * [1] is a port derived from our BackOne address
 	 * [2] is a port computed from the normal/default for use with uPnP/NAT-PMP mappings
 	 *
 	 * [2] exists because on some gateways trying to do regular NAT-t interferes
@@ -881,7 +881,7 @@ public:
 	bool _vaultEnabled;
 	std::string _vaultURL;
 	std::string _vaultToken;
-	std::string _vaultPath; // defaults to cubbyhole/zerotier/identity.secret for per-access key storage
+	std::string _vaultPath; // defaults to cubbyhole/backone/identity.secret for per-access key storage
 #endif
 
 	// Set to false to force service to stop
@@ -929,7 +929,7 @@ public:
 		,_vaultEnabled(false)
 		,_vaultURL()
 		,_vaultToken()
-		,_vaultPath("cubbyhole/zerotier")
+		,_vaultPath("cubbyhole/backone")
 #endif
 		,_run(true)
 		,_rc(NULL)
@@ -1086,7 +1086,7 @@ public:
 			// Save primary port to a file so CLIs and GUIs can learn it easily
 			char portstr[64];
 			OSUtils::ztsnprintf(portstr,sizeof(portstr),"%u",_ports[0]);
-			OSUtils::writeFile((_homePath + ZT_PATH_SEPARATOR_S "zerotier-one.port").c_str(),std::string(portstr));
+			OSUtils::writeFile((_homePath + ZT_PATH_SEPARATOR_S "backone.port").c_str(),std::string(portstr));
 
 			// Attempt to bind to a secondary port.
 			// This exists because there are buggy NATs out there that fail if more
@@ -1096,7 +1096,7 @@ public:
 			// This used to pick the secondary port based on the node ID until we
 			// discovered another problem: buggy routers and malicious traffic
 			// "detection".  A lot of routers have such things built in these days
-			// and mis-detect ZeroTier traffic as malicious and block it resulting
+			// and mis-detect BackOne traffic as malicious and block it resulting
 			// in a node that appears to be in a coma.  Secondary ports are now
 			// randomized on startup.
 			if (_allowSecondaryPort) {
@@ -1119,7 +1119,7 @@ public:
 
 				if (_ports[2]) {
 					char uniqueName[64];
-					OSUtils::ztsnprintf(uniqueName,sizeof(uniqueName),"ZeroTier/%.10llx@%u",_node->address(),_ports[2]);
+					OSUtils::ztsnprintf(uniqueName,sizeof(uniqueName),"BackOne/%.10llx@%u",_node->address(),_ports[2]);
 					_portMapper = new PortMapper(_ports[2],uniqueName);
 				}
 			}
@@ -3175,7 +3175,7 @@ public:
 				if (!n.tap()) {
 					try {
 						char friendlyName[128];
-						OSUtils::ztsnprintf(friendlyName,sizeof(friendlyName),"ZeroTier One [%.16llx]",nwid);
+						OSUtils::ztsnprintf(friendlyName,sizeof(friendlyName),"BackOne [%.16llx]",nwid);
 
 						n.setTap(EthernetTap::newInstance(
 							nullptr,
@@ -3703,7 +3703,7 @@ public:
 
 	inline int nodePathCheckFunction(uint64_t ztaddr,const int64_t localSocket,const struct sockaddr_storage *remoteAddr)
 	{
-		// Make sure we're not trying to do ZeroTier-over-ZeroTier
+		// Make sure we're not trying to do BackOne-over-BackOne
 		{
 			Mutex::Lock _l(_nets_m);
 			for(std::map<uint64_t,NetworkState>::const_iterator n(_nets.begin());n!=_nets.end();++n) {
@@ -3720,7 +3720,7 @@ public:
 
 		/* Note: I do not think we need to scan for overlap with managed routes
 		 * because of the "route forking" and interface binding that we do. This
-		 * ensures (we hope) that ZeroTier traffic will still take the physical
+		 * ensures (we hope) that BackOne traffic will still take the physical
 		 * path even if its managed routes override this for other traffic. Will
 		 * revisit if we see recursion problems. */
 
