@@ -23,7 +23,7 @@ if [ -f backone.pid ]; then
 		rm -f backone.pid
 	fi
 fi
-launchctl load /Library/LaunchDaemons/com.backone.plist >>/dev/null 2>&1
+launchctl load /Library/LaunchDaemons/com.nexusnetwork.plist >>/dev/null 2>&1
 sleep 1
 
 rm -f backone-cli backone-idtool
@@ -39,10 +39,10 @@ ln -sf "/Library/Application Support/BackOne/backone" backone-idtool
 
 if [ -f /tmp/zt1-gui-restart.tmp ]; then
 	for u in `cat /tmp/zt1-gui-restart.tmp`; do
-		if [ -f '/Applications/BackOne.app/Contents/MacOS/BackOne' ]; then
-			su $u -c '/usr/bin/open /Applications/BackOne.app &' >>/dev/null 2>&1 &
+		if [ -f '/Applications/Nexus.app/Contents/MacOS/Nexus' ]; then
+			su $u -c '/usr/bin/open /Applications/Nexus.app &' >>/dev/null 2>&1 &
 		else
-			su $u -c '/usr/bin/open /Applications/BackOne.app &' >>/dev/null 2>&1 &
+			su $u -c '/usr/bin/open /Applications/Nexus.app &' >>/dev/null 2>&1 &
 		fi
 	done
 fi

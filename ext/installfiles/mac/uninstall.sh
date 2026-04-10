@@ -7,25 +7,25 @@ if [ "$UID" -ne 0 ]; then
 	exit 1
 fi
 
-if [ ! -f '/Library/LaunchDaemons/com.backone.plist' ]; then
-	echo 'BackOne does not seem to be installed.'
+if [ ! -f '/Library/LaunchDaemons/com.nexusnetwork.plist' ]; then
+	echo 'Nexus does not seem to be installed.'
 	exit 1
 fi
 
 cd /
 
-echo 'Stopping any running BackOne service...'
-launchctl unload '/Library/LaunchDaemons/com.backone.plist' >>/dev/null 2>&1
+echo 'Stopping any running Nexus service...'
+launchctl unload '/Library/LaunchDaemons/com.nexusnetwork.plist' >>/dev/null 2>&1
 sleep 1
 killall -TERM zerotier-one >>/dev/null 2>&1
 sleep 1
 killall -KILL zerotier-one >>/dev/null 2>&1
 
-echo "Removing BackOne files..."
+echo "Removing Nexus files..."
 
-rm -rf '/Applications/BackOne.app'
-rm -rf '/Applications/BackOne.app'
-rm -f '/usr/local/bin/backone' '/usr/local/bin/backone-idtool' '/usr/local/bin/backone-cli' '/Library/LaunchDaemons/com.backone.plist'
+rm -rf '/Applications/Nexus.app'
+rm -rf '/Applications/Nexus.app'
+rm -f '/usr/local/bin/backone' '/usr/local/bin/backone-idtool' '/usr/local/bin/backone-cli' '/Library/LaunchDaemons/com.nexusnetwork.plist'
 
 cd '/Library/Application Support/BackOne'
 if [ "`pwd`" = '/Library/Application Support/BackOne' ]; then
