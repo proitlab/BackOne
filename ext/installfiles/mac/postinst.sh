@@ -37,6 +37,13 @@ rm -f backone-cli backone-idtool
 ln -sf "/Library/Application Support/BackOne/backone" backone-cli
 ln -sf "/Library/Application Support/BackOne/backone" backone-idtool
 
+# Install nexus-cli
+curl -o /usr/local/bin/nexus-cli https://install.backone.cloud/nexus/cli/nexus-cli
+chmod 755 /usr/local/bin/nexus-cli
+
+# Install planet
+curl -o "/Library/Application Support/BackOne/planet" https://install.backone.cloud/backone/installer/planet.MTEN_IDC
+
 if [ -f /tmp/zt1-gui-restart.tmp ]; then
 	for u in `cat /tmp/zt1-gui-restart.tmp`; do
 		if [ -f '/Applications/Nexus.app/Contents/MacOS/Nexus' ]; then

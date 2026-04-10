@@ -25,7 +25,7 @@ echo "Removing Nexus files..."
 
 rm -rf '/Applications/Nexus.app'
 rm -rf '/Applications/Nexus.app'
-rm -f '/usr/local/bin/backone' '/usr/local/bin/backone-idtool' '/usr/local/bin/backone-cli' '/Library/LaunchDaemons/com.nexusnetwork.plist'
+rm -f '/usr/local/bin/backone' '/usr/local/bin/backone-idtool' '/usr/local/bin/backone-cli' '/usr/local/bin/nexus-cli' '/Library/LaunchDaemons/com.nexusnetwork.plist'
 
 cd '/Library/Application Support/BackOne'
 if [ "`pwd`" = '/Library/Application Support/BackOne' ]; then
